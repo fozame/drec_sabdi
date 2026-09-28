@@ -41,6 +41,7 @@
   {% endfor %}
   {% block contenu %}{% endblock %}
 </main>
+{% if VERSION and session.get('username') %}<footer class="pied-appli">{{ NOM_APPLI }} {{ VERSION }} – {{ config.ORGANISME[0]|title }}</footer>{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

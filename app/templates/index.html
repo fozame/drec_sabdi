@@ -32,10 +32,10 @@
     <div class="muet petit" id="envoi-detail"></div>
   </div>
   <details class="mt">
-    <summary class="petit muet" style="cursor:pointer">Option avancée : analyser un dossier déjà présent sur le poste qui héberge l'application</summary>
+    <summary class="petit muet" style="cursor:pointer">Option avancée : analyser un dossier déjà déposé sur le serveur (dossier « depots »)</summary>
     <form onsubmit="examinerChemin(event)" style="display:flex;gap:10px;align-items:flex-end;margin-top:10px">
       <div style="flex:1"><label for="chemin">Chemin du dossier</label>
-        <input type="text" id="chemin" value="{{ dossier_defaut }}" placeholder="/Users/…/BDI/OCM/fevrier_2026"></div>
+        <input type="text" id="chemin" value="{{ dossier_defaut }}" placeholder="/depots/OCM/fevrier_2026"></div>
       <button class="btn">Examiner</button>
     </form>
   </details>

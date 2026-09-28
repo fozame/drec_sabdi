@@ -41,10 +41,24 @@ def _identite():
     chemin = config.chemin_logo()
     url = None
     if chemin:
-        rel = os.path.relpath(chemin, os.path.join(config.RACINE, "app", "static")).replace(os.sep, "/")
-        url = url_for("static", filename=rel) + f"?v={int(os.path.getmtime(chemin))}"
+        url = url_for("logo") + f"?v={int(os.path.getmtime(chemin))}"
     return {"logo_url": url, "NOM_APPLI": config.NOM_APPLICATION, "NOM_COMPLET": config.NOM_COMPLET,
-            "ROLES_LIBELLES": ROLES_LIBELLES}
+            "ROLES_LIBELLES": ROLES_LIBELLES, "VERSION": config.VERSION}
+
+
+@app.route("/logo")
+def logo():
+    """Logo de l'ART, où qu'il soit déposé (dossier des données ou app/static)."""
+    chemin = config.chemin_logo()
+    if not chemin:
+        abort(404)
+    return send_file(chemin, max_age=86400)
+
+
+@app.route("/sante")
+def sante():
+    """Contrôle de fonctionnement (utilisé par Docker)."""
+    return {"etat": "ok", "version": config.VERSION}
 app.jinja_env.globals.update(pct=fp, R=R, config=config, MOIS=R.MOIS_NOMS)
 
 

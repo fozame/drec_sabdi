@@ -63,7 +63,7 @@ def init_db():
             PRIMARY KEY (annee, mois))""")
         if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
             c.execute("INSERT INTO users (username, password, role, nom) VALUES (?,?,?,?)",
-                      ("admin", generate_password_hash("admin123"), "admin0", "Administrateur"))
+                      ("admin", generate_password_hash(config.MOT_DE_PASSE_ADMIN_INITIAL), "admin0", "Administrateur"))
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -54,10 +54,29 @@ NOM_COMPLET = "Système d'analyse des bases de données d'identification des op�
 
 
 def chemin_logo() -> str | None:
-    """Logo de l'ART (app/static/logo_art.png) ; None s'il n'a pas encore été déposé."""
-    for rel in ("app/static/logo_art.png", "app/static/images/logo_art.png", "static/logo_art.png"):
-        p = os.path.join(RACINE, rel)
-        if os.path.exists(p):
+    """
+    Logo de l'ART ; None s'il n'a pas encore été déposé. Recherché, dans l'ordre :
+    variable SABDI_LOGO, dossier des données (logo_art.png, cas du déploiement
+    Docker), puis app/static/logo_art.png.
+    """
+    candidats = [_env("LOGO"), os.path.join(DOSSIER_DONNEES, "logo_art.png")]
+    candidats += [os.path.join(RACINE, rel) for rel in
+                  ("app/static/logo_art.png", "app/static/images/logo_art.png", "static/logo_art.png")]
+    for p in candidats:
+        if p and os.path.isfile(p):
             return p
     return None
+
+
+def _version() -> str:
+    try:
+        return open(os.path.join(RACINE, "VERSION")).read().strip()
+    except OSError:
+        return ""
+
+
+VERSION = _version()
+
+# Mot de passe du compte « admin » créé au premier démarrage (base vide)
+MOT_DE_PASSE_ADMIN_INITIAL = _env("ADMIN_PASSWORD", "admin123")
 TITRE_ANNEXE = "État des lieux de la base des données d'identification"

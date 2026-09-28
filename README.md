@@ -11,21 +11,29 @@ prêts à imprimer.
 
 ## Installation
 
+**Sur le serveur (recommandé) : Docker.** Voir [DEPLOIEMENT.md](DEPLOIEMENT.md) :
+
+```bash
+sudo ./scripts/deployer.sh        # première installation
+sudo ./scripts/mettre_a_jour.sh   # mise à jour, après copie de la nouvelle version
+```
+
+**Sur un poste, sans Docker :**
+
 ```bash
 pip install -r requirements.txt
 python run.py
 ```
 
-L'application s'ouvre sur http://127.0.0.1:5600. Les collègues du réseau
-utilisent l'adresse IP du poste (http://192.168.x.x:5600).
+L'application s'ouvre sur http://127.0.0.1:5600.
 
-Compte initial : `admin` / `admin123` (à modifier dès la première connexion,
-menu « Mot de passe »).
+Compte initial : `admin` / `admin123` (ou la valeur de `SABDI_ADMIN_PASSWORD`),
+à modifier dès la première connexion (menu « Mot de passe »).
 
-**Logo** : déposer le fichier `logo_art.png` dans `app/static/`. Il apparaît
-dans l'en-tête de l'application, sur la page de connexion, dans l'aperçu avant
-impression et dans les documents PDF, Word et Excel. Sans ce fichier, tout
-fonctionne sans logo.
+**Logo** : fichier `logo_art.png`, déposé dans le dossier des données
+(`donnees/` avec Docker) ou dans `app/static/`. Il apparaît dans l'en-tête,
+sur la page de connexion, dans l'aperçu avant impression et dans les
+documents PDF, Word et Excel. Sans ce fichier, tout fonctionne sans logo.
 
 ## Profils
 
@@ -218,8 +226,12 @@ Variables d'environnement facultatives :
 | `SABDI_DATA` | dossier des données de l'application | `data/` |
 | `SABDI_PORT` | port d'écoute | `5600` |
 | `SABDI_DOSSIER` | dossier proposé par défaut (option avancée) | – |
+| `SABDI_SECRET` | clé de signature des sessions | générée dans le dossier des données |
+| `SABDI_ADMIN_PASSWORD` | mot de passe du compte `admin` créé au premier démarrage | `admin123` |
+| `SABDI_LOGO` | chemin du logo, s'il n'est ni dans les données ni dans `app/static/` | – |
+| `SABDI_THREADS` | fils d'exécution du serveur de production (`serveur.py`) | `8` |
 
-Les anciens noms (`SABDI_…`) et l'ancien fichier `data/sgrna.db` restent reconnus.
+Les anciens noms (`SGRNA_…`) et l'ancien fichier `data/sgrna.db` restent reconnus.
 Pour conserver les comptes de la toute première version, pointer `SABDI_DB` vers
 l'ancienne base (`sgrna_users.db`) : les mots de passe existants restent
 valables et sont renforcés à la première connexion. L'en-tête des documents

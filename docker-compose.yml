@@ -1,0 +1,36 @@
+# SABDI – déploiement Docker
+#   Première installation :   ./scripts/deployer.sh
+#   Mise à jour :              ./scripts/mettre_a_jour.sh
+# Réglages dans le fichier .env (modèle : .env.exemple).
+
+services:
+  sabdi:
+    build:
+      context: .
+      args:
+        POLARS_RUNTIME: ${SABDI_POLARS_RUNTIME:-}
+    image: sabdi:${SABDI_VERSION:-latest}
+    container_name: sabdi
+    restart: unless-stopped
+    ports:
+      - "${SABDI_PORT_HOTE:-5600}:5600"
+    environment:
+      SABDI_SECRET: ${SABDI_SECRET:?Renseigner SABDI_SECRET dans le fichier .env}
+      SABDI_ADMIN_PASSWORD: ${SABDI_ADMIN_PASSWORD:-admin123}
+      SABDI_THREADS: ${SABDI_THREADS:-8}
+      SABDI_DOSSIER: /depots
+      TZ: ${TZ:-Africa/Douala}
+    volumes:
+      # Données persistantes : base SQLite (utilisateurs, historique), extractions,
+      # fichiers téléversés, logo (logo_art.png). À sauvegarder.
+      - ${SABDI_DONNEES:-./donnees}:/data
+      # Dossiers des opérateurs déposés sur le serveur (lecture seule), accessibles
+      # dans l'application par le chemin /depots/...
+      - ${SABDI_DEPOTS:-./depots}:/depots:ro
+    # Une analyse de 6 millions de lignes utilise environ 3 à 4 Go de mémoire.
+    mem_limit: ${SABDI_MEMOIRE:-8g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
