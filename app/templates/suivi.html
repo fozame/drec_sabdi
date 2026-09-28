@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block titre %}Analyse en cours{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>Analyse en cours</h1>
+    <div class="sous-titre">{{ tache.parametres.operateur_libelle }} · {{ tache.parametres.dossier }}</div>
+  </div>
+</div>
+<div class="carte" style="max-width:920px">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <b id="etape">{{ tache.etape }}</b><span class="muet" id="pct">{{ tache.pct }} %</span>
+  </div>
+  <div class="progression"><div id="barre"></div></div>
+  <div class="journal" id="journal"></div>
+  <div class="groupe-btn mt" id="fin" style="display:none"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const URL_ETAT = "{{ url_for('suivi_etat', job_id=tache.id) }}";
+let depuis = 0;
+const j = document.getElementById('journal');
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+async function interroger() {
+  let d;
+  try { d = await (await fetch(URL_ETAT + '?depuis=' + depuis)).json(); }
+  catch (e) { setTimeout(interroger, 2000); return; }
+  for (const l of d.logs || []) {
+    j.insertAdjacentHTML('beforeend', `<div class="${l.niveau}"><span class="t">${l.t.toFixed(1)} s</span>${esc(l.msg)}</div>`);
+  }
+  depuis = d.total_logs || depuis;
+  j.scrollTop = j.scrollHeight;
+  document.getElementById('etape').textContent = d.etape || '';
+  document.getElementById('pct').textContent = (d.pct || 0) + ' %';
+  document.getElementById('barre').style.width = (d.pct || 0) + '%';
+  const fin = document.getElementById('fin');
+  if (d.etat === 'termine') {
+    fin.innerHTML = `<a class="btn btn-principal" href="${d.url}">Voir les résultats</a>`;
+    fin.style.display = 'flex';
+    setTimeout(() => location.href = d.url, 1200);
+  } else if (d.etat === 'erreur') {
+    document.getElementById('barre').style.background = '#8a1c1c';
+    fin.innerHTML = `<div class="flash danger" style="margin:0;flex:1">${esc(d.erreur)}</div><a class="btn" href="{{ url_for('index') }}">Retour</a>`;
+    fin.style.display = 'flex';
+  } else if (d.etat === 'inconnu') {
+    fin.innerHTML = `<a class="btn" href="{{ url_for('historique') }}">Consulter l'historique</a>`; fin.style.display = 'flex';
+  } else setTimeout(interroger, 900);
+}
+interroger();
+</script>
+{% endblock %}

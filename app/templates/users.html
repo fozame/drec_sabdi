@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block titre %}Utilisateurs{% endblock %}
+{% block contenu %}
+<div class="entete-page"><div><h1>Utilisateurs</h1>
+  <div class="sous-titre">Administrateur : tout, y compris comptes et suppression d'analyses. Chargé d'analyse : dépôt des fichiers, analyses, observations, note mensuelle, exports. Direction : consultation, validation des analyses et exports, sans modification.</div></div></div>
+
+<div class="grille-3-1">
+  <div class="carte serree">
+    <table class="t">
+      <thead><tr><th>Identifiant</th><th>Nom</th><th>Niveau</th><th>Nouveau mot de passe</th><th></th></tr></thead>
+      <tbody>
+      {% for u in users %}
+      <tr>
+        <td><b>{{ u.username }}</b></td>
+        <td><input type="text" name="nom" value="{{ u.nom or '' }}" form="f-u{{ u.id }}"></td>
+        <td><select name="role" form="f-u{{ u.id }}">{% for code, lib in ROLES_LIBELLES.items() %}<option value="{{ code }}" {{ 'selected' if u.role == code }}>{{ lib }}</option>{% endfor %}</select></td>
+        <td><input type="password" name="password" placeholder="inchangé" minlength="6" form="f-u{{ u.id }}"></td>
+        <td class="nowrap">
+          <form method="post" action="{{ url_for('modifier_user_route', id=u.id) }}" id="f-u{{ u.id }}" style="display:inline">
+            <button class="btn btn-sm">Enregistrer</button></form>
+          {% if u.id != session_user_id %}
+          <form method="post" action="{{ url_for('supprimer_user_route', id=u.id) }}" style="display:inline"
+                onsubmit="return confirm('Supprimer le compte {{ u.username }} ?')"><button class="btn btn-sm btn-danger">Supprimer</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="carte">
+    <h2>Nouveau compte</h2>
+    <form method="post">
+      <div class="champ"><label>Identifiant</label><input type="text" name="username" required></div>
+      <div class="champ"><label>Nom complet</label><input type="text" name="nom"></div>
+      <div class="champ"><label>Mot de passe</label><input type="password" name="password" required minlength="6"></div>
+      <div class="champ"><label>Niveau</label><select name="role"><option value="admin1">Chargé d'analyse</option><option value="direction">Direction</option><option value="admin0">Administrateur</option></select></div>
+      <button class="btn btn-principal">Créer le compte</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block titre %}Synthèse du mois{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>Synthèse du mois{% if s %} – {{ s.libelle }}{% endif %}</h1>
+    <div class="sous-titre">Comparaison des opérateurs pour un même mois de base. Pour chaque opérateur : l'analyse validée, à défaut la plus récente.</div>
+  </div>
+  {% if periodes %}
+  <form method="get" class="groupe-btn">
+    <select name="periode" onchange="const [a, m] = this.value.split('-'); location.href='?annee=' + a + '&mois=' + m" style="min-width:200px">
+      {% for p in periodes %}
+      <option value="{{ p.annee }}-{{ p.mois }}" {{ 'selected' if p.annee == annee and p.mois == mois }}>{{ MOIS[p.mois - 1]|capitalize }} {{ p.annee }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+
+{% if not s or not s.colonnes %}
+<div class="carte"><p class="muet">Aucune analyse disponible. Les analyses apparaissent ici dès qu'elles sont réalisées.</p></div>
+{% else %}
+
+<div class="carte">
+  <div class="carte-titre">
+    <h2>Documents du mois</h2>
+    <div class="groupe-btn">
+      <a class="btn btn-principal" href="{{ url_for('mois_note', fmt='pdf', annee=annee, mois=mois) }}">Note de synthèse (PDF)</a>
+      <a class="btn" href="{{ url_for('mois_note', fmt='docx', annee=annee, mois=mois) }}">Note de synthèse (Word)</a>
+      <a class="btn" href="{{ url_for('mois_annexe', fmt='pdf', annee=annee, mois=mois) }}">Annexe regroupée (PDF)</a>
+      <a class="btn" href="{{ url_for('mois_annexe', fmt='docx', annee=annee, mois=mois) }}">Annexe regroupée (Word)</a>
+    </div>
+  </div>
+  <table class="t">
+    <thead><tr><th>Opérateur</th><th>Analyse retenue</th><th>Statut</th><th>Mois précédent ({{ s.libelle_precedent }})</th></tr></thead>
+    <tbody>
+    {% for c in s.colonnes %}
+      <tr>
+        <td><b>{{ c.libelle }}</b></td>
+        <td><a href="{{ url_for('analyse', analyse_id=c.id) }}">Analyse n° {{ c.id }}</a> <span class="muet petit">du {{ c.res.date_analyse }}</span></td>
+        <td>{% if c.validee %}<span class="pastille ok">Validée</span>{% else %}<span class="pastille info">Non validée</span>{% endif %}</td>
+        <td>{% if c.prec_id %}<a href="{{ url_for('analyse', analyse_id=c.prec_id) }}">Analyse n° {{ c.prec_id }}</a>{% else %}<span class="muet">aucune</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="carte serree">
+  <div style="padding:16px 20px 6px"><h2>Chiffres clés comparés</h2>
+    <p class="muet petit">Entre parenthèses : part de la base concernée. En dessous : évolution par rapport à {{ s.libelle_precedent }}.</p></div>
+  <div class="tab-wrap">
+  <table class="t comparatif">
+    <thead><tr><th>Indicateur</th>{% for c in s.colonnes %}<th class="num">{{ c.libelle }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for l in s.lignes %}
+      <tr class="{{ '' if l.anomalie else 'effectif' }}">
+        <td>{{ l.libelle }}</td>
+        {% for c in l.cellules %}
+        <td class="num"><b>{{ c.txt }}</b>{% if c.taux %} <span class="muet petit">({{ c.taux }})</span>{% endif %}
+          {% if c.var_txt and c.var_txt != '=' %}<div class="petit var {{ ('hausse' if (c.var or 0) > 0 else 'baisse') if l.anomalie }}">{{ c.var_txt }}</div>{% endif %}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="grille-2">
+  <div class="carte">
+    <h2>Constats principaux</h2>
+    {% if s.constats %}
+    <ul class="constats">{% for c in s.constats %}<li>{{ c }}</li>{% endfor %}</ul>
+    {% else %}<p class="muet">Aucune anomalie relevée.</p>{% endif %}
+    <p class="aide mt">Constats établis automatiquement à partir des chiffres, sans interprétation. Ils figurent dans la note de synthèse.</p>
+  </div>
+  <div class="carte">
+    <h2>Observations et actions proposées</h2>
+    {% if session.get('role') in ('admin0', 'admin1') %}
+    <form method="post">
+      <input type="hidden" name="annee" value="{{ annee }}"><input type="hidden" name="mois" value="{{ mois }}">
+      <textarea name="texte" rows="9" placeholder="Texte repris dans la note de synthèse (une idée par ligne).">{{ s.note }}</textarea>
+      <div class="groupe-btn mt" style="justify-content:space-between">
+        <span class="muet petit">{% if note and note.modifie_le %}Modifié par {{ note.modifie_par }} le {{ note.modifie_le|date_fr }}{% endif %}</span>
+        <button class="btn btn-principal">Enregistrer</button>
+      </div>
+    </form>
+    {% else %}
+      {% if s.note %}<div style="white-space:pre-line">{{ s.note }}</div>{% else %}<p class="muet">Pas encore renseigné par les chargés d'analyse.</p>{% endif %}
+      {% if note and note.modifie_le %}<p class="muet petit mt">Rédigé par {{ note.modifie_par }} le {{ note.modifie_le|date_fr }}</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

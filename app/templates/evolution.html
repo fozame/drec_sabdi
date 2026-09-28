@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block titre %}Évolution{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>Évolution par opérateur</h1>
+    <div class="sous-titre">Principaux indicateurs d'un mois à l'autre : pour chaque mois, l'analyse validée (à défaut, la plus récente). Variation par rapport au mois précédent.</div>
+  </div>
+  <form method="get">
+    <select name="operateur" onchange="this.form.submit()" style="min-width:220px">
+      {% for o in operateurs %}<option value="{{ o.operateur }}" {{ 'selected' if o.operateur == op }}>{{ o.operateur_libelle }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if periodes %}
+<div class="carte serree">
+  <div class="tab-wrap">
+  <table class="t evol">
+    <thead><tr><th>Indicateur</th>
+      {% for p in periodes %}<th class="num" colspan="2" style="text-align:center;border-left:1px solid #c3cad4"><a href="{{ url_for('analyse', analyse_id=p.id) }}">{{ p.libelle }}</a>{% if not p.validee %}<br><span class="muet petit" style="font-weight:400">non validée</span>{% endif %}</th>{% endfor %}
+    </tr>
+    <tr><th></th>{% for p in periodes %}<th class="num" style="border-left:1px solid #c3cad4">Valeur</th><th class="num">Variation</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr class="{{ 'sous' if l.sous }}">
+        <td>{{ l.libelle }}</td>
+        {% for c in l.cellules %}
+          <td class="num" style="border-left:1px solid #dde2e8">{{ c.v|n if c.v is not none else '/' }}</td>
+          <td class="num var {{ ('hausse' if c.var and c.var > 0 else ('baisse' if c.var and c.var < 0 else '')) if l.anomalie }}">
+            {% if c.var %}{{ '+' if c.var > 0 }}{{ c.var|n }}{% if c.var_pct %} <span class="muet">({{ '+' if c.var > 0 }}{{ c.var_pct }})</span>{% endif %}{% elif loop.index > 1 and c.v is not none %}<span class="muet">=</span>{% endif %}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+<p class="aide">Indicateurs d'anomalies : une hausse apparaît en rouge, une baisse en vert.</p>
+{% else %}
+<div class="carte"><p class="muet">Aucune analyse disponible pour cet opérateur.</p></div>
+{% endif %}
+{% endblock %}

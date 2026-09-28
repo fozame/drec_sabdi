@@ -1,0 +1,79 @@
+{% from '_macros.html' import table_etat, table_controles, tables_completude %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Annexe – {{ config.TITRE_ANNEXE }} – {{ NOM_APPLI }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<style>
+  @page { size: A4 landscape; margin: 14mm 12mm 14mm 12mm; }
+  body { background: #fff; font-size: 12px; }
+  .feuille { max-width: 1120px; margin: 0 auto; padding: 24px; }
+  .barre-outils { position: sticky; top: 0; background: #f3f5f8; border-bottom: 1px solid #dde2e8;
+                  padding: 10px 24px; display: flex; gap: 10px; align-items: center; z-index: 5; }
+  .org { text-align: center; line-height: 1.35; }
+  .org b { font-size: 13px; letter-spacing: .02em; display: block; }
+  .logo-impression { height: 64px; display: block; margin: 0 auto 6px; }
+  .org div { color: #5b6472; font-size: 11.5px; }
+  .annexe { text-align: center; margin: 14px 0 18px; }
+  .annexe .a { color: #1f3a5f; font-weight: 700; font-size: 17px; letter-spacing: .06em; }
+  .annexe .t { font-weight: 700; font-size: 15px; margin-top: 2px; }
+  .annexe .s { color: #5b6472; font-size: 12px; margin-top: 3px; }
+  h2.section { color: #1f3a5f; font-size: 13.5px; margin: 18px 0 8px; }
+  table.etat { font-size: 10.5px; }
+  table.etat td.obs { font-size: 9.5px; min-width: 0; }
+  table.etat td.stat { width: 210px; }
+  table.t { font-size: 10.5px; }
+  table.etat td.suite { border-top: 0; border-bottom: 0; }
+  table.etat tr + tr:not(.debut) td.suite { border-top: 0; }
+  table.etat td.obs { vertical-align: top; }
+  .notes { font-size: 10px; color: #5b6472; margin-top: 14px; }
+  .notes li { margin-left: 16px; }
+  @media print {
+    .barre-outils { display: none; }
+    .feuille { padding: 0; max-width: none; }
+    .saut { page-break-before: always; }
+    table { page-break-inside: auto; }
+    table.t tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="barre-outils">
+  <button class="btn btn-principal" onclick="window.print()">Imprimer</button>
+  <span class="muet petit">Format A4 paysage. Dans la fenêtre d'impression, désactiver les en-têtes et pieds de page du navigateur pour un rendu propre.</span>
+</div>
+<div class="feuille">
+  <div class="org">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="ART" class="logo-impression">{% endif %}
+    <b>{{ config.ORGANISME[0] }}</b>
+    {% for l in config.ORGANISME[1:] %}<div>{{ l }}</div>{% endfor %}
+  </div>
+  <div class="annexe">
+    <div class="a">ANNEXE</div>
+    <div class="t">{{ config.TITRE_ANNEXE }}</div>
+    <div class="s">{{ sous_titre }}</div>
+  </div>
+
+  {% for s in sections %}
+  <div class="{{ 'saut' if not loop.first }}">
+    <h2 class="section">{{ s.titre }}</h2>
+    {{ table_etat(s.tableau, fusion=False) }}
+    {% if contenu == 'complet' %}
+    <div class="saut"></div>
+    <h2 class="section">Contrôles complémentaires – {{ s.res.operateur_libelle }} ({{ s.res.periode.libelle }})</h2>
+    {{ table_controles(s.controles) }}
+    {% if sections|length == 1 %}
+    <h2 class="section">Complétude des champs d'identification</h2>
+    {{ tables_completude(s.completude) }}
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="notes"><b>Notes de méthode</b><ul>{% for n in notes %}<li>{{ n }}</li>{% endfor %}</ul></div>
+</div>
+</body>
+</html>

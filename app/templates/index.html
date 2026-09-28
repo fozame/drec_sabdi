@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% block titre %}Nouvelle analyse{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>Nouvelle analyse</h1>
+    <div class="sous-titre">Déposer les fichiers reçus de l'opérateur, vérifier ce qui a été reconnu, puis lancer le calcul.</div>
+  </div>
+</div>
+
+{% if tache %}
+<div class="flash info">Une analyse est en cours ({{ tache.etape }}). <a href="{{ url_for('suivi', job_id=tache.id) }}">Suivre l'analyse</a></div>
+{% endif %}
+
+<div class="carte" id="bloc-depot">
+  <h2>1. Fichiers de l'opérateur</h2>
+  <div class="depot" id="depot">
+    <div class="depot-titre">Glisser ici les fichiers, le dossier ou l'archive .zip</div>
+    <div class="depot-aide">BDI, HLR, fichiers majeurs / mineurs / flotte / M2M : CSV, TXT, Excel ou ZIP</div>
+    <div class="groupe-btn" style="justify-content:center;margin-top:14px">
+      <label class="btn btn-principal" style="margin:0">Choisir des fichiers ou un .zip
+        <input type="file" id="in-fichiers" multiple accept=".csv,.txt,.tsv,.dat,.xlsx,.xls,.zip" hidden></label>
+      <label class="btn" style="margin:0">Choisir un dossier
+        <input type="file" id="in-dossier" webkitdirectory directory multiple hidden></label>
+    </div>
+  </div>
+  <div id="envoi" style="display:none" class="mt">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <b id="envoi-texte">Envoi…</b><span class="muet" id="envoi-pct"></span>
+    </div>
+    <div class="progression"><div id="envoi-barre"></div></div>
+    <div class="muet petit" id="envoi-detail"></div>
+  </div>
+  <details class="mt">
+    <summary class="petit muet" style="cursor:pointer">Option avancée : analyser un dossier déjà présent sur le poste qui héberge l'application</summary>
+    <form onsubmit="examinerChemin(event)" style="display:flex;gap:10px;align-items:flex-end;margin-top:10px">
+      <div style="flex:1"><label for="chemin">Chemin du dossier</label>
+        <input type="text" id="chemin" value="{{ dossier_defaut }}" placeholder="/Users/…/BDI/OCM/fevrier_2026"></div>
+      <button class="btn">Examiner</button>
+    </form>
+  </details>
+  <div id="erreur-examen" class="flash danger mt" style="display:none"></div>
+</div>
+
+<div id="examen">
+  <div class="carte">
+    <h2>2. Opérateur et mois de la base</h2>
+    <div class="ligne-champs">
+      <div class="champ">
+        <label>Opérateur</label>
+        <select id="operateur" onchange="majAutre()">
+          {% for code, lib in operateurs.items() %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}
+          <option value="AUTRE">Autre…</option>
+        </select>
+      </div>
+      <div class="champ" id="bloc-autre" style="display:none">
+        <label>Nom de l'opérateur</label><input type="text" id="operateur_libelle">
+      </div>
+      <div class="champ">
+        <label>Mois de la base (obligatoire)</label>
+        <select id="mois"><option value="">—</option>
+          {% for m in MOIS %}<option value="{{ loop.index }}">{{ m|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="champ"><label>Année (obligatoire)</label><input type="number" id="annee" min="2010" max="2100"></div>
+    </div>
+    <div class="encadre" id="aide-periode"></div>
+
+    <h3>Options de calcul</h3>
+    <div class="ligne-champs">
+      <div class="champ">
+        <label>Numéros comptés</label>
+        <select id="perimetre">
+          <option value="hlr">Numéros présents au HLR (recommandé)</option>
+          <option value="tous">Toutes les lignes des fichiers</option>
+        </select>
+        <div class="aide">Les lignes absentes du HLR sont dénombrées à part dans les contrôles.</div>
+      </div>
+      <div class="champ">
+        <label>Personnes physiques</label>
+        <select id="source_physiques">
+          <option value="auto">Automatique</option>
+          <option value="fichiers">Fichiers majeurs / mineurs transmis</option>
+          <option value="bdi">BDI ventilée selon l'âge</option>
+        </select>
+      </div>
+      <div class="champ" id="bloc-supprimer" style="display:none">
+        <label>Fichiers reçus</label>
+        <select id="supprimer_apres">
+          <option value="1">Supprimer du poste après l'analyse</option>
+          <option value="0">Conserver 3 jours</option>
+        </select>
+        <div class="aide">Résultats et extractions sont conservés dans tous les cas.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="carte">
+    <div class="carte-titre">
+      <h2>3. Fichiers reconnus</h2>
+      <span class="muet petit" id="nb-fichiers"></span>
+    </div>
+    <p class="muet petit" style="margin-bottom:10px">Vérifier le rôle de chaque fichier et la colonne retenue pour chaque information. Les pourcentages indiquent la part de valeurs exploitables sur les premières lignes.</p>
+    <div id="liste-fichiers"></div>
+  </div>
+
+  <div class="carte" id="bloc-types" style="display:none">
+    <h2>4. Types de pièce</h2>
+    <p class="muet petit" style="margin-bottom:10px">Types de pièce présents dans les fichiers de personnes (sur les premières lignes). Les types désignant une personne morale (RCCM…) sont comptés en personnes morales et non en personnes physiques.</p>
+    <table class="t" style="max-width:720px"><thead><tr><th>Type de pièce</th><th class="num">Lignes (échantillon)</th><th>Compté comme</th></tr></thead>
+      <tbody id="corps-types"></tbody></table>
+  </div>
+
+  <div class="carte">
+    <div id="alertes" class="encadre avert" style="display:none;margin-bottom:14px"></div>
+    <div class="groupe-btn" style="justify-content:flex-end">
+      <button class="btn" onclick="location.reload()">Recommencer</button>
+      <button class="btn btn-principal" id="b-lancer" onclick="lancer()">Lancer l'analyse</button>
+    </div>
+  </div>
+</div>
+
+{% if recentes %}
+<div class="carte serree">
+  <div style="padding:16px 22px 4px" class="carte-titre"><h2>Analyses récentes</h2><a href="{{ url_for('historique') }}" class="petit">Tout l'historique</a></div>
+  <table class="t">
+    <thead><tr><th>Opérateur</th><th>Mois de la base</th><th class="num">Numéros</th><th>Réalisée le</th><th>Par</th><th></th></tr></thead>
+    <tbody>
+    {% for a in recentes %}
+      <tr class="cliquable" onclick="location.href='{{ url_for('analyse', analyse_id=a.id) }}'">
+        <td><b>{{ a.operateur_libelle }}</b></td>
+        <td>{{ a.periode_libelle }}</td>
+        <td class="num">{{ a.nb_numeros|n }}</td>
+        <td>{{ a.date_analyse|date_fr }}</td>
+        <td>{{ a.utilisateur }}</td>
+        <td class="droite"><a href="{{ url_for('analyse', analyse_id=a.id) }}">Ouvrir</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ROLES = {{ roles|tojson }};
+const CHAMPS = {{ R.LIBELLES_CHAMPS|tojson }};
+const CATEGORIES = {{ R.CATEGORIES_TYPES|tojson }};
+const BLOC = 8 * 1024 * 1024;
+let EXAMEN = null;
+
+const el = id => document.getElementById(id);
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function taille(n) { const u = ['o', 'Ko', 'Mo', 'Go']; let i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; }
+                     return (i ? n.toFixed(1).replace('.', ',') : n) + ' ' + u[i]; }
+function majAutre() { el('bloc-autre').style.display = el('operateur').value === 'AUTRE' ? 'block' : 'none'; }
+function erreur(msg) { el('erreur-examen').textContent = msg; el('erreur-examen').style.display = 'block'; }
+
+// ── Dépôt : glisser-déposer (fichiers et dossiers) ou sélection ────────────
+const depot = el('depot');
+['dragenter', 'dragover'].forEach(t => depot.addEventListener(t, e => { e.preventDefault(); depot.classList.add('survol'); }));
+['dragleave', 'drop'].forEach(t => depot.addEventListener(t, e => { e.preventDefault(); depot.classList.remove('survol'); }));
+depot.addEventListener('drop', async e => {
+  const items = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const liste = [];
+  async function parcourir(entree, chemin) {
+    if (entree.isFile) {
+      const f = await new Promise((ok, ko) => entree.file(ok, ko));
+      liste.push({fichier: f, nom: chemin + f.name});
+    } else if (entree.isDirectory) {
+      const lecteur = entree.createReader();
+      let lot;
+      do {
+        lot = await new Promise((ok, ko) => lecteur.readEntries(ok, ko));
+        for (const x of lot) await parcourir(x, chemin + entree.name + '/');
+      } while (lot.length);
+    }
+  }
+  if (items.length) { for (const it of items) await parcourir(it, ''); }
+  else [...e.dataTransfer.files].forEach(f => liste.push({fichier: f, nom: f.name}));
+  envoyer(liste);
+});
+el('in-fichiers').addEventListener('change', e => envoyer([...e.target.files].map(f => ({fichier: f, nom: f.name}))));
+el('in-dossier').addEventListener('change', e => envoyer([...e.target.files].map(f => ({fichier: f, nom: f.webkitRelativePath || f.name}))));
+
+async function envoyer(liste) {
+  liste = liste.filter(x => /\.(csv|txt|tsv|dat|xlsx|xls|zip)$/i.test(x.nom) && !x.nom.split('/').pop().startsWith('.'));
+  if (!liste.length) { erreur('Aucun fichier CSV, TXT, Excel ou ZIP dans la sélection.'); return; }
+  el('erreur-examen').style.display = 'none';
+  el('envoi').style.display = 'block';
+  const total = liste.reduce((a, x) => a + x.fichier.size, 0);
+  let envoye = 0;
+  const t0 = Date.now();
+  try {
+    const { id } = await (await fetch('{{ url_for("televersement_nouveau") }}', {method: 'POST'})).json();
+    for (const [i, x] of liste.entries()) {
+      el('envoi-texte').textContent = `Envoi de ${x.nom} (${i + 1}/${liste.length})`;
+      for (let pos = 0; pos < x.fichier.size || pos === 0; pos += BLOC) {
+        const r = await fetch(`/televersement/${id}/bloc`, {method: 'POST', body: x.fichier.slice(pos, pos + BLOC),
+          headers: {'X-Nom': encodeURIComponent(x.nom), 'X-Position': String(pos)}});
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.erreur);
+        envoye += Math.min(BLOC, x.fichier.size - pos);
+        const pct = total ? Math.round(envoye / total * 100) : 100;
+        el('envoi-barre').style.width = pct + '%';
+        el('envoi-pct').textContent = pct + ' %';
+        const debit = envoye / Math.max(1, (Date.now() - t0) / 1000);
+        el('envoi-detail').textContent = `${taille(envoye)} / ${taille(total)} · ${taille(debit)}/s`;
+        if (x.fichier.size === 0) break;
+      }
+    }
+    el('envoi-texte').textContent = 'Décompression et examen des fichiers…';
+    const d = await (await fetch(`/televersement/${id}/terminer`, {method: 'POST'})).json();
+    if (!d.ok) throw new Error(d.erreur);
+    el('envoi-texte').textContent = 'Fichiers reçus et examinés.';
+    EXAMEN = d; afficher(d);
+  } catch (e) {
+    erreur("L'envoi a échoué : " + e.message);
+    el('envoi-texte').textContent = 'Échec de l’envoi';
+  }
+}
+
+async function examinerChemin(ev) {
+  ev.preventDefault();
+  el('erreur-examen').style.display = 'none';
+  const d = await (await fetch('{{ url_for("examiner") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                   body: JSON.stringify({chemin: el('chemin').value})})).json();
+  if (!d.ok) { erreur(d.erreur); return; }
+  EXAMEN = d; afficher(d);
+}
+
+// ── Affichage de l'examen ──────────────────────────────────────────────────
+function afficher(d) {
+  el('examen').style.display = 'block';
+  const op = el('operateur');
+  op.value = d.operateur && [...op.options].some(o => o.value === d.operateur) ? d.operateur : 'AUTRE';
+  majAutre();
+  el('mois').value = d.periode.mois || '';
+  el('annee').value = d.periode.annee || '';
+  let aide;
+  if (d.periode.certitude === 'complete') aide = `Mois de la base déduit des noms de fichiers : <b>${esc(d.periode.libelle)}</b>.`;
+  else if (d.periode.source) aide = `Mois de la base estimé d'après ${esc(d.periode.source)} : <b>${esc(d.periode.libelle)}</b>. À confirmer.`;
+  else aide = '<b>Mois de la base non trouvé : à renseigner.</b>';
+  if (d.estimation_periode && d.estimation_periode.date_max)
+    aide += ` <span class="muet">Souscription la plus récente dans les données : ${d.estimation_periode.date_max.split('-').reverse().join('/')}.</span>`;
+  el('aide-periode').innerHTML = aide + '<br><span class="muet">Les âges (mineurs, majeurs) et les expirations de pièces sont calculés par rapport à ce mois, et non à la date du jour.</span>';
+  el('perimetre').value = d.a_hlr ? 'hlr' : 'tous';
+  el('bloc-supprimer').style.display = d.televersement ? 'block' : 'none';
+  el('liste-fichiers').innerHTML = d.fichiers.map((f, i) => carteFichier(f, i)).join('');
+  el('nb-fichiers').textContent = d.fichiers.length + ' fichier(s)';
+  afficherTypes(d.types_piece || []);
+  afficherAlertes(d.alertes);
+  el('examen').scrollIntoView({behavior: 'smooth'});
+}
+
+function afficherAlertes(alertes) {
+  if (alertes && alertes.length) {
+    el('alertes').innerHTML = '<b>Points à vérifier</b><ul>' + alertes.map(a => `<li>${esc(a)}</li>`).join('') + '</ul>';
+    el('alertes').style.display = 'block';
+  } else el('alertes').style.display = 'none';
+}
+
+function afficherTypes(types) {
+  el('bloc-types').style.display = types.length ? 'block' : 'none';
+  const opts = Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  el('corps-types').innerHTML = types.map(t => `<tr><td><b>${esc(t.type === 'NON_RENSEIGNE' ? 'Non renseigné' : t.type)}</b></td>
+    <td class="num">${t.n.toLocaleString('fr-FR')}</td>
+    <td><select class="type-cat" data-type="${esc(t.type)}">${opts}</select></td></tr>`).join('');
+  document.querySelectorAll('.type-cat').forEach((s, i) => s.value = types[i].categorie);
+}
+
+function carteFichier(f, i) {
+  const optsRole = Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === f.role ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  const champs = (EXAMEN.champs[f.role] || []);
+  const optsCol = c => '<option value="">— aucune —</option>' + f.colonnes.map(x =>
+      `<option value="${esc(x)}" ${x === c ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const lignesChamps = champs.map(ch => {
+    const col = f.correspondances[ch] || '';
+    const q = f.qualite[ch];
+    let qual = '';
+    if (col && q) {
+      if (q.taux !== null && q.taux !== undefined) qual = `<span class="pastille ${q.taux >= 90 ? 'ok' : (q.taux >= 60 ? 'info' : 'alerte')}">${q.taux} % exploitables</span>`;
+      else qual = `<span class="muet">${q.remplis} % remplies</span>`;
+      if (q.exemple) qual += ` <span class="muet">ex. « ${esc(String(q.exemple).slice(0, 30))} »</span>`;
+    }
+    const deduit = f.deduits.includes(ch) ? ' <span class="pastille info">déduite du contenu</span>' : '';
+    const important = ['msisdn', 'date_naissance'].includes(ch) && !col ? ' manque' : '';
+    return `<tr><td class="${important}">${esc(CHAMPS[ch] || ch)}</td>
+      <td><select class="col-sel" data-i="${i}" data-champ="${ch}">${optsCol(col)}</select></td><td class="petit">${qual}${deduit}</td></tr>`;
+  }).join('');
+  const apercu = f.apercu.length ? `<div class="tab-wrap"><table class="t apercu"><thead><tr>${f.colonnes.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${f.apercu.map(l => `<tr>${l.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
+  const reconnus = Object.keys(f.correspondances).length;
+  return `<div class="fichier" id="f-${i}">
+    <div class="fichier-tete">
+      <div><b>${esc(f.nom)}</b> <span class="muet petit">${esc(f.taille_lisible)} · ${f.colonnes.length} colonnes · ${reconnus} reconnues</span></div>
+      <select class="role-select" data-i="${i}" onchange="changerRole(${i}, this.value)">${optsRole}</select>
+    </div>
+    ${f.role !== 'IGNORE' ? `<details ${f.champs_manquants.length || f.deduits.length ? 'open' : ''}>
+      <summary class="petit" style="cursor:pointer;margin:6px 0">Colonnes et aperçu des données</summary>
+      <table class="t" style="margin:6px 0 10px"><thead><tr><th style="width:30%">Information</th><th style="width:30%">Colonne du fichier</th><th>Qualité</th></tr></thead>
+      <tbody>${lignesChamps}</tbody></table>${apercu}</details>` : '<div class="muet petit">Fichier non utilisé.</div>'}
+  </div>`;
+}
+
+async function reexaminer(i, role, colonnes) {
+  const f = EXAMEN.fichiers[i];
+  const d = await (await fetch('{{ url_for("examiner_fichier") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({chemin: f.chemin, role, colonnes})})).json();
+  if (!d.ok) { alert(d.erreur); return; }
+  EXAMEN.fichiers[i] = d.fichier;
+  el('f-' + i).outerHTML = carteFichier(d.fichier, i);
+  const det = document.querySelector(`#f-${i} details`);
+  if (det) det.open = true;
+}
+function changerRole(i, role) { reexaminer(i, role, {}); }
+document.addEventListener('change', e => {
+  if (!e.target.classList.contains('col-sel')) return;
+  const i = +e.target.dataset.i;
+  const colonnes = {};
+  document.querySelectorAll(`#f-${i} .col-sel`).forEach(s => colonnes[s.dataset.champ] = s.value);
+  EXAMEN.fichiers[i].forcees = colonnes;
+  reexaminer(i, EXAMEN.fichiers[i].role, colonnes);
+});
+
+async function lancer() {
+  if (!EXAMEN) return;
+  if (!el('mois').value || !el('annee').value) {
+    alert("Renseigner le mois et l'année de la base : ils servent de référence pour les âges et les expirations.");
+    el('mois').focus(); return;
+  }
+  const fichiers = EXAMEN.fichiers.map((f, i) => {
+    const colonnes = {};
+    document.querySelectorAll(`#f-${i} .col-sel`).forEach(s => colonnes[s.dataset.champ] = s.value);
+    return {chemin: f.chemin, role: document.querySelector(`#f-${i} .role-select`).value, colonnes};
+  });
+  const classement = {};
+  document.querySelectorAll('.type-cat').forEach(s => classement[s.dataset.type] = s.value);
+  const op = el('operateur');
+  const b = el('b-lancer'); b.disabled = true; b.textContent = 'Lancement…';
+  const r = await fetch('{{ url_for("lancer") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({dossier: EXAMEN.dossier, fichiers, operateur: op.value, televersement: EXAMEN.televersement || null,
+      operateur_libelle: op.value === 'AUTRE' ? el('operateur_libelle').value : op.options[op.selectedIndex].text,
+      mois: el('mois').value, annee: el('annee').value, source_physiques: el('source_physiques').value,
+      perimetre: el('perimetre').value, classement_types: classement,
+      supprimer_apres: el('supprimer_apres').value === '1'})});
+  const d = await r.json();
+  if (d.ok) location.href = d.url;
+  else { alert(d.erreur); b.disabled = false; b.textContent = "Lancer l'analyse"; }
+}
+</script>
+{% endblock %}

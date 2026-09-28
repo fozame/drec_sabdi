@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block titre %}Historique{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>Historique des analyses</h1>
+    <div class="sous-titre">Toutes les analyses sont conservées : elles peuvent être rouvertes, annotées et réexportées. Sélectionnez-en plusieurs pour produire une annexe regroupée (sections I, II, …).</div>
+  </div>
+</div>
+
+<div class="carte">
+  <form method="get" class="ligne-champs" style="align-items:end">
+    <div class="champ" style="margin:0"><label>Opérateur</label>
+      <select name="operateur" onchange="this.form.submit()"><option value="">Tous</option>
+        {% for o in operateurs %}<option value="{{ o.operateur }}" {{ 'selected' if o.operateur == filtre_op }}>{{ o.operateur_libelle }}</option>{% endfor %}
+      </select></div>
+    <div class="champ" style="margin:0"><label>Année</label>
+      <select name="annee" onchange="this.form.submit()"><option value="">Toutes</option>
+        {% for a in annees %}<option value="{{ a }}" {{ 'selected' if a|string == filtre_annee }}>{{ a }}</option>{% endfor %}
+      </select></div>
+    <div class="champ" style="margin:0"><label>Statut</label>
+      <select name="statut" onchange="this.form.submit()"><option value="">Tous</option>
+        {% for code, lib in statuts.items() %}<option value="{{ code }}" {{ 'selected' if code == filtre_statut }}>{{ lib }}</option>{% endfor %}
+      </select></div>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('annexe_groupee') }}" id="f-annexe" target="_self">
+<div class="carte serree">
+  {% if analyses %}
+  <table class="t">
+    <thead><tr><th style="width:34px"><input type="checkbox" onclick="document.querySelectorAll('.sel').forEach(c=>c.checked=this.checked); maj()"></th>
+      <th>N°</th><th>Opérateur</th><th>Mois de la base</th><th>Statut</th><th class="num">Numéros</th><th>Réalisée le</th><th>Par</th><th>Dossier</th><th></th></tr></thead>
+    <tbody>
+    {% for a in analyses %}
+      <tr>
+        <td><input type="checkbox" class="sel" name="ids" value="{{ a.id }}" onchange="maj()"></td>
+        <td class="muet">{{ a.id }}</td>
+        <td><b>{{ a.operateur_libelle }}</b></td>
+        <td>{{ a.periode_libelle }}</td>
+        {% set st = a.statut_validation or 'brouillon' %}
+        <td><span class="pastille {{ 'ok' if st == 'validee' else ('neutre' if st == 'remplacee' else 'info') }}">{{ statuts[st] }}</span></td>
+        <td class="num">{{ a.nb_numeros|n }}</td>
+        <td class="nowrap">{{ a.date_analyse|date_fr }}{% if a.modifie_le %} <span class="pastille info" title="Observations modifiées le {{ a.modifie_le|date_fr }}">annotée</span>{% endif %}</td>
+        <td>{{ a.utilisateur }}</td>
+        <td class="muet petit" title="{{ a.dossier }}">{{ (a.dossier or '')[-45:] }}</td>
+        <td class="droite nowrap"><a href="{{ url_for('analyse', analyse_id=a.id) }}">Ouvrir</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muet" style="padding:28px;text-align:center">Aucune analyse enregistrée{% if filtre_op or filtre_annee %} pour ces critères{% endif %}.</p>
+  {% endif %}
+</div>
+
+{% if analyses %}
+<div class="carte" id="bloc-annexe">
+  <h2>Annexe regroupée <span class="muet petit" id="nb-sel" style="font-weight:400"></span></h2>
+  <div class="ligne-champs">
+    <div class="champ"><label>Contenu</label>
+      <select name="contenu"><option value="tableau">Tableaux d'état des lieux</option><option value="complet">Tableaux + contrôles complémentaires</option></select></div>
+    <div class="champ"><label>Ordre des sections</label>
+      <select name="ordre"><option value="selection">Ordre de la liste</option><option value="periode">Par période puis opérateur</option></select></div>
+    <div class="champ"><label>Numérotation des lignes</label>
+      <select name="numerotation"><option value="continue">Continue (1 à n sur toutes les sections)</option><option value="section">Reprise à 1 par section</option></select></div>
+  </div>
+  <div class="groupe-btn">
+    <button class="btn" name="format" value="pdf" disabled>PDF</button>
+    <button class="btn" name="format" value="docx" disabled>Word</button>
+    <button class="btn" name="format" value="xlsx" disabled>Excel</button>
+    <button class="btn btn-principal" name="format" value="imprimer" disabled onclick="this.form.target='_blank'">Aperçu avant impression</button>
+  </div>
+</div>
+{% endif %}
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+function maj() {
+  const n = document.querySelectorAll('.sel:checked').length;
+  document.querySelectorAll('#bloc-annexe button').forEach(b => b.disabled = n === 0);
+  const s = document.getElementById('nb-sel');
+  if (s) s.textContent = n ? `– ${n} analyse(s) sélectionnée(s)` : '– cochez les analyses à inclure';
+  document.getElementById('f-annexe').target = '_self';
+}
+maj();
+</script>
+{% endblock %}

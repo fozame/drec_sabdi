@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block titre %}Connexion{% endblock %}
+{% block contenu %}
+<div class="connexion">
+  <div class="marque-c">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="ART" class="logo-connexion">{% endif %}
+    <b>{{ NOM_APPLI }}</b>
+    <div class="nom-complet">{{ NOM_COMPLET }}</div>
+    <div>{{ config.ORGANISME[0] }}</div>
+    <div>{{ config.ORGANISME[1] }}</div>
+    <div>{{ config.ORGANISME[2] }}</div>
+  </div>
+  <div class="carte">
+    <form method="post">
+      <div class="champ"><label for="u">Identifiant</label>
+        <input type="text" id="u" name="username" autofocus required autocomplete="username"></div>
+      <div class="champ"><label for="p">Mot de passe</label>
+        <input type="password" id="p" name="password" required autocomplete="current-password"></div>
+      <button class="btn btn-principal" style="width:100%;justify-content:center;margin-top:6px">Se connecter</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

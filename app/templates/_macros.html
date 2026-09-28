@@ -1,0 +1,70 @@
+{% macro table_etat(tableau, edition=False, fusion=True) %}
+{% set k = tableau.colonnes|length %}
+<table class="etat">
+  <thead>
+    <tr>
+      <th rowspan="2">N°</th><th rowspan="2">Statistiques</th><th rowspan="2">Spécifications</th>
+      <th colspan="{{ k + 1 }}">Résultats</th><th rowspan="2">Observations</th>
+    </tr>
+    <tr>{% for code, lib in tableau.colonnes %}<th>{{ lib }}</th>{% endfor %}<th>Total</th></tr>
+  </thead>
+  <tbody>
+  {% for l in tableau.lignes %}
+    <tr class="{{ l.style }}{{ ' debut' if l.debut_groupe }}">
+      {% if l.debut_groupe %}
+      <td class="n" rowspan="{{ l.taille_groupe if fusion else 1 }}">{{ l.n }}</td>
+      <td class="stat" rowspan="{{ l.taille_groupe if fusion else 1 }}">{{ l.statistique }}</td>
+      {% elif not fusion %}<td class="n suite"></td><td class="stat suite"></td>
+      {% endif %}
+      <td class="spec">{{ l.specification }}{% if l.variantes %}<span class="variantes">{{ l.variantes|join(' | ') }}</span>{% endif %}</td>
+      {% for v in l.valeurs %}<td class="num">{{ v }}</td>{% endfor %}
+      <td class="num tot">{{ l.total }}</td>
+      {% if not l.debut_groupe and not fusion %}<td class="obs suite"></td>{% endif %}
+      {% if l.debut_groupe %}
+      <td class="obs" rowspan="{{ l.taille_groupe if fusion else 1 }}">{% if edition %}<textarea name="obs_{{ l.code }}" rows="{{ [3, (l.observation|length // 45) + 2]|max }}">{{ '' if l.observation == '/' else l.observation }}</textarea>{% else %}{{ l.observation }}{% endif %}</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro table_controles(controles, lien=None) %}
+<table class="t">
+  <thead><tr><th>Famille</th><th>Contrôle</th><th class="num">Nombre</th><th class="num">Base</th><th class="num">Taux</th><th>Détail</th>{% if lien %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% set ns = namespace(f=None) %}
+  {% for c in controles %}
+    <tr{% if c.famille != ns.f %} style="border-top:2px solid #c3cad4"{% endif %}>
+      <td class="nowrap">{% if c.famille != ns.f %}<b>{{ c.famille }}</b>{% endif %}</td>
+      <td>{{ c.libelle }}{% if c.commentaire %}<div class="muet petit">{{ c.commentaire }}</div>{% endif %}</td>
+      <td class="num">{% if c.niveau == 'alerte' and c.brut.valeur %}<span class="pastille alerte">{{ c.valeur }}</span>{% else %}{{ c.valeur }}{% endif %}</td>
+      <td class="num">{{ c.base }}</td>
+      <td class="num">{{ c.taux }}</td>
+      <td class="petit">{{ c.detail or '–' }}</td>
+      {% if lien %}<td class="nowrap petit">{% if c.brut.extraction and lien(c.brut.extraction) %}<a href="{{ lien(c.brut.extraction) }}">Lignes</a>{% endif %}</td>{% endif %}
+    </tr>
+    {% set ns.f = c.famille %}
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro tables_completude(completude) %}
+{% for bloc in completude %}
+<h3>{{ bloc.libelle }} <span class="muet" style="font-weight:400">– effectif : {{ bloc.effectif }}</span></h3>
+<table class="t">
+  <thead><tr><th style="width:28%">Champ</th><th style="width:28%">Colonne du fichier</th><th class="num">Non renseignés</th><th class="num">Invalides</th><th class="num">Taux</th><th style="width:18%"></th></tr></thead>
+  <tbody>
+  {% for l in bloc.lignes %}
+    <tr{% if l.absent %} class="muet"{% endif %}>
+      <td>{{ l.libelle }}</td>
+      <td>{% if l.absent %}<span class="pastille neutre">colonne absente</span>{% else %}<code>{{ l.colonne }}</code>{% endif %}</td>
+      <td class="num">{{ l.vides }}</td><td class="num">{{ l.invalides }}</td><td class="num">{{ l.taux }}</td>
+      <td>{% if not l.absent %}<div class="barre" style="grid-template-columns:1fr"><div class="piste"><div class="rempli {{ 'rouge' if (l.taux_num or 0) >= 5 else 'gris' }}" style="width:{{ [l.taux_num or 0, 100]|min }}%"></div></div></div>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+{% endmacro %}

@@ -1,0 +1,287 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import table_etat, table_controles, tables_completude %}
+{% block titre %}{{ res.operateur_libelle }} – {{ res.periode.libelle }}{% endblock %}
+{% block contenu %}
+<div class="entete-page">
+  <div>
+    <h1>{{ res.operateur_libelle }} – {{ res.periode.libelle }}
+      <span class="pastille {{ 'ok' if statut == 'validee' else ('neutre' if statut == 'remplacee' else 'info') }}" style="vertical-align:middle;font-size:12px">{{ statuts_validation[statut] }}</span></h1>
+    <div class="sous-titre">
+      Analyse n° {{ row.id }} du {{ res.date_analyse }}{% if res.utilisateur %} par {{ res.utilisateur }}{% endif %}
+      · {{ res.fichiers|length }} fichiers · mois de référence : {{ res.periode.mois_reference or res.periode.libelle }}
+      · {{ 'numéros présents au HLR' if res.parametres.perimetre == 'hlr' else 'toutes les lignes' }}
+      {% if row.modifie_le %} · observations modifiées le {{ row.modifie_le|date_fr }}{% endif %}
+      {% if statut == 'validee' %} · validée par {{ row.valide_par }} le {{ row.valide_le|date_fr }}{% endif %}
+    </div>
+  </div>
+  <div class="groupe-btn">
+    {% if session.get('role') in ('admin0', 'direction') %}
+    <form method="post" action="{{ url_for('valider', analyse_id=row.id) }}" style="display:inline">
+      {% if statut == 'validee' %}
+      <button class="btn" name="action" value="brouillon" onclick="return confirm('Repasser cette analyse en brouillon ?')">Repasser en brouillon</button>
+      {% else %}
+      <button class="btn btn-valider" name="action" value="valider" onclick="return confirm('Valider cette analyse ? Elle fera foi pour cet opérateur et ce mois, et ses observations seront verrouillées.')">Valider l'analyse</button>
+      {% endif %}
+    </form>
+    {% endif %}
+    <a class="btn" href="{{ url_for('exporter', analyse_id=row.id, fmt='pdf') }}">PDF</a>
+    <a class="btn" href="{{ url_for('exporter', analyse_id=row.id, fmt='docx') }}">Word</a>
+    <a class="btn" href="{{ url_for('exporter', analyse_id=row.id, fmt='xlsx') }}">Excel</a>
+    <a class="btn btn-principal" href="{{ url_for('imprimer', analyse_id=row.id) }}" target="_blank">Imprimer</a>
+  </div>
+</div>
+
+{% if res.alertes %}
+<div class="encadre avert" style="margin-bottom:18px"><b>Remarques sur les données reçues</b>
+  <ul>{% for a in res.alertes %}<li>{{ a }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<nav class="onglets">
+  {% for code, lib in [('synthese', 'Synthèse'), ('etat', 'État des lieux'), ('signaux', "Signaux d'alerte"), ('controles', 'Contrôles'), ('completude', 'Complétude des champs'), ('fichiers', 'Fichiers et méthode')] %}
+  <a href="?onglet={{ code }}" data-onglet="{{ code }}" class="{{ 'actif' if onglet == code }}">{{ lib }}</a>
+  {% endfor %}
+</nav>
+
+{# ── Synthèse ─────────────────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'synthese' }}" id="p-synthese">
+  <div class="kpis">
+    {% for k in res.synthese.kpis %}
+    <div class="kpi{{ ' alerte' if k.alerte }}">
+      <div class="lib">{{ k.libelle }}</div>
+      <div class="val">{{ k.valeur|n }}</div>
+      <div class="det">{{ k.detail }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="grille-2">
+    <div class="carte">
+      <h2>Taux de mauvaise identification par catégorie</h2>
+      <div class="barres">
+      {% for t in res.synthese.taux_mal %}
+        <div class="barre">
+          <span class="l">{{ t.libelle }}</span>
+          <div class="piste">{% if t.taux is not none %}<div class="rempli rouge" style="width:{{ [t.taux * 4, 100]|min }}%"></div>{% endif %}</div>
+          <span class="v">{% if t.taux is not none %}{{ pct(t.mal, t.base) }} <span class="muet petit">({{ t.mal|n }})</span>{% else %}<span class="muet">non évalué</span>{% endif %}</span>
+        </div>
+      {% endfor %}
+      </div>
+      <div class="aide mt">Échelle : la barre pleine correspond à 25 %. Critères détaillés dans l'onglet « État des lieux » (observations).</div>
+    </div>
+
+    <div class="carte">
+      <h2>Points d'attention</h2>
+      {% if points %}
+      <ul class="points">
+        {% for c in points %}
+        <li><span>{{ c.libelle }}<br><span class="muet petit">{{ c.famille }}</span></span>
+            <span class="chiffre">{{ c.valeur|n }}{% if c.base %}<small>{{ pct(c.valeur, c.base) }} de {{ c.base|n }}</small>{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muet">Aucune anomalie relevée par les contrôles complémentaires.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="grille-2">
+    {% if res.synthese.statuts_numeros %}
+    <div class="carte">
+      <h2>Statut des numéros d'abonnés</h2>
+      {% set tot = res.synthese.statuts_numeros|sum(attribute='n') %}
+      <div class="barres">
+        {% for s in res.synthese.statuts_numeros %}
+        <div class="barre"><span class="l">{{ s.libelle }}</span>
+          <div class="piste"><div class="rempli{{ '' if s.categorie == 'ACTIF' else ' gris' }}" style="width:{{ (s.n / tot * 100) if tot else 0 }}%"></div></div>
+          <span class="v">{{ s.n|n }} <span class="muet petit">{{ pct(s.n, tot) }}</span></span></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if res.synthese.types_majeurs %}
+    <div class="carte">
+      <h2>Majeurs par type de pièce</h2>
+      {% set maxi = res.synthese.types_majeurs[0].total or 1 %}
+      {% set tot = res.synthese.types_majeurs|sum(attribute='total') %}
+      <div class="barres">
+        {% for t in res.synthese.types_majeurs[:10] %}
+        <div class="barre"><span class="l" title="{{ t.type }}">{{ t.type }}</span>
+          <div class="piste"><div class="rempli" style="width:{{ t.total / maxi * 100 }}%"></div></div>
+          <span class="v">{{ t.total|n }} <span class="muet petit">{{ pct(t.total, tot) }}</span></span></div>
+        {% endfor %}
+      </div>
+      {% if res.synthese.types_majeurs|length > 10 %}<div class="aide mt">{{ res.synthese.types_majeurs|length - 10 }} autres types dans le tableau détaillé.</div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{# ── État des lieux ───────────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'etat' }}" id="p-etat">
+  <form method="post" action="{{ url_for('observations', analyse_id=row.id) }}" id="f-obs">
+  <div class="carte serree">
+    <div class="carte-titre" style="padding:14px 18px 0">
+      <h2 style="font-size:14px">{{ titre }}</h2>
+      <div class="groupe-btn">
+        {% if statut == 'validee' %}<span class="muet petit">Analyse validée : observations verrouillées.</span>{% endif %}
+        {% set peut_editer = statut != 'validee' and session.get('role') in ('admin0', 'admin1') %}
+        <button type="button" class="btn btn-sm" id="b-editer" onclick="editer(true)" {% if not peut_editer %}style="display:none" data-bloque="1"{% endif %}>Modifier les observations</button>
+        <span id="actions-edition" style="display:none" class="groupe-btn">
+          <button type="submit" class="btn btn-sm btn-principal">Enregistrer</button>
+          <button type="button" class="btn btn-sm" onclick="editer(false)">Annuler</button>
+          <button type="submit" class="btn btn-sm" name="reinitialiser" value="1" onclick="return confirm('Rétablir les observations calculées automatiquement ?')">Rétablir les observations automatiques</button>
+        </span>
+      </div>
+    </div>
+    <div class="tab-wrap" style="padding:12px 18px 18px">
+      <div id="vue-lecture">{{ table_etat(tableau) }}</div>
+      <div id="vue-edition" style="display:none">{{ table_etat(tableau, edition=True) }}</div>
+    </div>
+  </div>
+  </form>
+  {% set liens = res.etat_des_lieux|selectattr('extraction', 'defined')|list %}
+  {% if liens and ext %}
+  <div class="carte">
+    <h2>Lignes détaillées par indicateur</h2>
+    <p class="muet petit" style="margin-bottom:8px">Lignes complètes telles que reçues de l'opérateur (fichier CSV lisible dans Excel), pour vérifier chaque chiffre.</p>
+    <div class="groupe-btn">
+    {% for e in liens %}{% if ext.get(e.extraction) %}
+      <a class="btn btn-sm" href="{{ url_for('extraction', analyse_id=row.id, code=e.extraction) }}">N° {{ e.n }} – {{ ext[e.extraction].lignes|n }} lignes</a>
+    {% endif %}{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{# ── Signaux d'alerte ─────────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'signaux' }}" id="p-signaux">
+  <div class="carte-titre">
+    <p class="muet petit" style="max-width:900px">Informations que les chiffres déclarés ne montrent pas. Âges et délais calculés au mois de la base ({{ res.periode.mois_reference or res.periode.libelle }}). Une même personne est reconnue par son nom (mots dans n'importe quel ordre, sans accents) et sa date de naissance. Chaque signal peut être vérifié ligne par ligne.</p>
+    {% if ext %}<a class="btn" href="{{ url_for('extractions_zip', analyse_id=row.id) }}">Toutes les lignes (zip)</a>{% endif %}
+  </div>
+  {% if not signaux %}<div class="carte"><p class="muet">Aucun signal calculable avec les colonnes transmises.</p></div>{% endif %}
+  {% set ns = namespace(f=None) %}
+  {% for x in signaux %}
+    {% if x.famille != ns.f %}<h3>{{ x.famille }}</h3>{% set ns.f = x.famille %}{% endif %}
+    <div class="signal {{ x.niveau }}">
+      <div class="signal-tete">
+        <div>
+          <b>{{ x.libelle }}</b>
+          {% if x.commentaire %}<div class="muet petit">{{ x.commentaire }}</div>{% endif %}
+        </div>
+        <div class="signal-chiffre">
+          <b>{{ x.lignes_txt }}</b> <span class="muet petit">numéros</span>
+          <div class="muet petit">{{ x.entites_txt }}{% if x.base %}{{ ' · ' if x.entites_txt }}{{ x.taux_txt }} de {{ x.base|n }}{% endif %}</div>
+          {% if x.extraction and ext.get(x.extraction) %}<a class="petit" href="{{ url_for('extraction', analyse_id=row.id, code=x.extraction) }}">Télécharger les lignes</a>{% endif %}
+        </div>
+      </div>
+      {% if x.detail_txt %}
+      <div class="signal-detail">
+        {% for a, b in x.detail_txt %}{% if b is none %}<div class="titre">{{ a.strip('— ') }}</div>{% else %}<div><span>{{ a }}</span><b>{{ b }}</b></div>{% endif %}{% endfor %}
+      </div>
+      {% endif %}
+      {% if x.exemples.lignes %}
+      <details class="mt" {{ 'open' if x.exemples.ouvert }}><summary class="petit" style="cursor:pointer">{{ x.exemples.titre or 'Exemples (' ~ (x.exemples.lignes|length) ~ ')' }}</summary>
+        <table class="t" style="margin-top:6px"><thead><tr>{% for c in x.exemples.colonnes %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for l in x.exemples.lignes %}<tr>{% for v in l %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>
+      </details>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+
+{# ── Contrôles ────────────────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'controles' }}" id="p-controles">
+  <div class="carte serree">
+    <div style="padding:16px 20px 6px"><h2>Contrôles complémentaires</h2>
+      <p class="muet petit">Contrôles réalisés sur les fichiers transmis. Ils n'entrent pas dans les chiffres de l'état des lieux.</p></div>
+    <div class="tab-wrap">{{ table_controles(controles, lien_extraction) }}</div>
+  </div>
+</section>
+
+{# ── Complétude ───────────────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'completude' }}" id="p-completude">
+  <div class="carte">
+    <h2>Complétude des champs d'identification</h2>
+    <p class="muet petit">Sont comptées comme non renseignées les cellules vides et les valeurs de remplissage (« - », « 0 », « N/A », « XXX »…). Les dates non interprétables et les IMEI de longueur non conforme (hors 14, 15 ou 16 chiffres) sont comptés comme invalides.</p>
+    {{ tables_completude(completude) }}
+  </div>
+</section>
+
+{# ── Fichiers et méthode ──────────────────────────────────────────────── #}
+<section class="panneau {{ 'actif' if onglet == 'fichiers' }}" id="p-fichiers">
+  <div class="carte serree">
+    <div style="padding:16px 20px 6px"><h2>Fichiers analysés</h2></div>
+    <div class="tab-wrap">
+    <table class="t">
+      <thead><tr><th>Fichier</th><th>Rôle retenu</th><th class="num">Lignes</th><th>Statuts</th><th>Correspondance des colonnes</th></tr></thead>
+      <tbody>
+      {% for f in fichiers %}
+        <tr><td><b>{{ f.nom }}</b></td><td>{{ f.role }}</td><td class="num">{{ f.lignes }}</td><td>{{ f.statut }}</td>
+            <td class="mapping">{{ f.correspondances }}{% if f.manquants != '–' %}<div class="manque">Non trouvés : {{ f.manquants }}</div>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% if trace %}
+  <div class="carte">
+    <h2>Du fichier au tableau</h2>
+    <p class="muet petit" style="margin-bottom:8px">Passage du nombre de lignes reçues aux chiffres de l'état des lieux, étape par étape.</p>
+    <div class="grille-2">
+    {% for t in trace %}
+      <table class="t trace">
+        <thead><tr><th colspan="2">{{ t.titre }}</th></tr></thead>
+        <tbody>
+          {% for lib, v in t.etapes %}<tr><td>{{ lib }}</td><td>{{ v }}</td></tr>{% endfor %}
+          <tr class="final"><td>{{ t.final_lib }}</td><td>{{ t.final }}</td></tr>
+        </tbody>
+      </table>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div class="grille-3-1">
+    <div class="carte serree">
+      <div style="padding:16px 20px 6px"><h2>Valeurs de statut reçues et catégorie retenue</h2></div>
+      <div class="tab-wrap">
+      <table class="t">
+        <thead><tr><th>Fichier</th><th>Valeur transmise</th><th>Catégorie retenue</th><th class="num">Nombre</th></tr></thead>
+        <tbody>{% for s in statuts %}<tr><td>{{ s.fichier }}</td><td><code>{{ s.valeur }}</code></td><td>{{ s.categorie }}</td><td class="num">{{ s.n }}</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+    </div>
+    <div class="carte">
+      <h2>Méthode</h2>
+      <ul style="margin-left:16px" class="petit">{% for n in notes %}<li style="margin-bottom:6px">{{ n }}</li>{% endfor %}</ul>
+      <p class="petit muet mt">Dossier : {{ res.dossier }}<br>Durée de traitement : {{ res.duree_s }} s</p>
+      {% if session.get('role') == 'admin0' %}
+      <form method="post" action="{{ url_for('supprimer', analyse_id=row.id) }}" class="mt"
+            onsubmit="return confirm('Supprimer définitivement cette analyse de l\'historique ?')">
+        <button class="btn btn-sm btn-danger">Supprimer cette analyse</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.onglets a').forEach(a => a.addEventListener('click', ev => {
+  ev.preventDefault();
+  const o = a.dataset.onglet;
+  document.querySelectorAll('.onglets a').forEach(x => x.classList.toggle('actif', x === a));
+  document.querySelectorAll('.panneau').forEach(p => p.classList.toggle('actif', p.id === 'p-' + o));
+  history.replaceState(null, '', '?onglet=' + o);
+}));
+function editer(oui) {
+  document.getElementById('vue-lecture').style.display = oui ? 'none' : 'block';
+  document.getElementById('vue-edition').style.display = oui ? 'block' : 'none';
+  const b = document.getElementById('b-editer');
+  b.style.display = (oui || b.dataset.bloque) ? 'none' : 'inline-flex';
+  document.getElementById('actions-edition').style.display = oui ? 'inline-flex' : 'none';
+  // seuls les champs de la vue édition sont envoyés
+  document.querySelectorAll('#vue-edition textarea').forEach(t => t.disabled = !oui);
+}
+editer(false);
+</script>
+{% endblock %}

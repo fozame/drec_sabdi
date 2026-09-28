@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block titre %}{{ NOM_APPLI }}{% endblock %} – {{ NOM_APPLI }}</title>
+  {% if logo_url %}<link rel="icon" href="{{ logo_url }}">{% endif %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+{% set ep = request.endpoint or '' %}
+<header class="nav">
+  <div class="nav-in">
+    <a class="marque" href="{{ url_for('index') }}">
+      {% if logo_url %}<img src="{{ logo_url }}" alt="ART">{% endif %}
+      <span class="marque-texte"><b>{{ NOM_APPLI }}</b><span>{{ NOM_COMPLET }}</span></span>
+    </a>
+    {% if session.get('username') %}
+    <nav class="nav-liens">
+      {% if session.get('role') != 'direction' %}
+      <a href="{{ url_for('index') }}" class="{{ 'actif' if ep in ('index', 'suivi') }}">Nouvelle analyse</a>
+      {% endif %}
+      <a href="{{ url_for('mois') }}" class="{{ 'actif' if ep == 'mois' }}">Synthèse du mois</a>
+      <a href="{{ url_for('historique') }}" class="{{ 'actif' if ep in ('historique', 'analyse') }}">Historique</a>
+      <a href="{{ url_for('evolution') }}" class="{{ 'actif' if ep == 'evolution' }}">Évolution</a>
+      {% if session.get('role') == 'admin0' %}
+      <a href="{{ url_for('gerer_users') }}" class="{{ 'actif' if ep == 'gerer_users' }}">Utilisateurs</a>
+      {% endif %}
+    </nav>
+    <div class="nav-user">
+      <div class="qui">{{ session.get('nom') }}<small>{{ ROLES_LIBELLES.get(session.get('role'), '') }}</small></div>
+      <a href="{{ url_for('compte') }}">Mot de passe</a>
+      <a href="{{ url_for('logout') }}">Déconnexion</a>
+    </div>
+    {% endif %}
+  </div>
+</header>
+<main class="page">
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% block contenu %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>
