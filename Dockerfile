@@ -28,8 +28,12 @@ RUN pip install -r requirements.txt \
         && pip uninstall -y polars-runtime-32; \
     fi
 
-# Application
-COPY . .
+# Application (liste explicite : aucune donnée ne peut entrer dans l'image)
+COPY app/ app/
+COPY moteur/ moteur/
+COPY exports/ exports/
+COPY docker/ docker/
+COPY config.py run.py serveur.py VERSION ./
 RUN useradd --system --home-dir /app --shell /usr/sbin/nologin sabdi \
  && mkdir -p /data /depots \
  && chown -R sabdi:sabdi /data \

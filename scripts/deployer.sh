@@ -6,12 +6,7 @@ source "$(dirname "$0")/_commun.sh"
 command -v docker >/dev/null || { err "Docker n'est pas installé."; exit 1; }
 
 # 1. Fichier de configuration
-if [ ! -f .env ]; then
-  cp .env.exemple .env
-  secret="$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-  ecrire_env SABDI_SECRET "$secret"
-  info "Fichier .env créé (clé secrète générée)."
-fi
+creer_env
 [ -n "$(lire_env SABDI_SECRET)" ] || { err "SABDI_SECRET est vide dans .env."; exit 1; }
 ecrire_env SABDI_VERSION "$VERSION_CODE"
 

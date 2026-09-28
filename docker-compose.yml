@@ -1,7 +1,7 @@
 # SABDI – déploiement Docker
 #   Première installation :   ./scripts/deployer.sh
 #   Mise à jour :              ./scripts/mettre_a_jour.sh
-# Réglages dans le fichier .env (modèle : .env.exemple).
+# Réglages dans le fichier .env (modèle : env.exemple).
 
 services:
   sabdi:

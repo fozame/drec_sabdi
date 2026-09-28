@@ -3,7 +3,7 @@
 # l'exporter dans un fichier, puis la charger sur le serveur avec charger_image.sh.
 #   ./scripts/exporter_image.sh      → sabdi_image_<version>.tar.gz
 source "$(dirname "$0")/_commun.sh"
-[ -f .env ] || { cp .env.exemple .env; ecrire_env SABDI_SECRET "a-remplacer-sur-le-serveur"; }
+[ -f .env ] || { creer_env; ecrire_env SABDI_SECRET "a-remplacer-sur-le-serveur"; }
 ecrire_env SABDI_VERSION "$VERSION_CODE"
 $DC build
 F="sabdi_image_${VERSION_CODE}.tar.gz"

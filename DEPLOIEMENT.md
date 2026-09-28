@@ -94,7 +94,7 @@ sudo ./scripts/deployer.sh
 ```
 
 Le script :
-1. crée le fichier `.env` à partir de `.env.exemple` et génère la clé secrète ;
+1. crée le fichier `.env` à partir de `env.exemple` et génère la clé secrète ;
 2. crée les dossiers `donnees/` (base, historique, extractions, logo),
    `depots/` et `sauvegardes/` ;
 3. construit l'image `sabdi:<version>` et démarre le conteneur `sabdi` ;
@@ -218,7 +218,7 @@ sudo -E ./scripts/mettre_a_jour.sh
 ## Contenu du dossier
 
 ```
-Dockerfile, docker-compose.yml, .env.exemple   construction et lancement
+Dockerfile, docker-compose.yml, env.exemple   construction et lancement
 docker/entrypoint.py                           démarrage du conteneur (droits, utilisateur non root)
 serveur.py                                     serveur de production (waitress)
 scripts/                                       deployer, mettre_a_jour, mettre_a_jour_depuis_git, retour_arriere,

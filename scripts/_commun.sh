@@ -44,3 +44,28 @@ attendre_demarrage() {
 }
 
 dossier_donnees() { local d; d="$(lire_env SABDI_DONNEES)"; echo "${d:-./donnees}"; }
+
+# Crée le fichier .env s'il n'existe pas (modèle env.exemple, ou valeurs par défaut)
+creer_env() {
+  [ -f .env ] && return 0
+  if [ -f env.exemple ]; then
+    cp env.exemple .env
+  elif [ -f .env.exemple ]; then
+    cp .env.exemple .env
+  else
+    cat > .env <<'FIN'
+SABDI_VERSION=latest
+SABDI_SECRET=
+SABDI_ADMIN_PASSWORD=admin123
+SABDI_PORT_HOTE=5600
+SABDI_DONNEES=./donnees
+SABDI_DEPOTS=./depots
+SABDI_MEMOIRE=8g
+SABDI_THREADS=8
+SABDI_POLARS_RUNTIME=
+TZ=Africa/Douala
+FIN
+  fi
+  ecrire_env SABDI_SECRET "$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  info "Fichier .env créé (clé secrète générée)."
+}

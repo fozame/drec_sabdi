@@ -6,8 +6,7 @@ F="${1:-sabdi_image_${VERSION_CODE}.tar.gz}"
 [ -f "$F" ] || { err "Fichier introuvable : $F"; exit 1; }
 gunzip -c "$F" | docker load
 if [ ! -f .env ]; then
-  cp .env.exemple .env
-  ecrire_env SABDI_SECRET "$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  creer_env
 elif [ "$(lire_env SABDI_SECRET)" = "a-remplacer-sur-le-serveur" ]; then
   ecrire_env SABDI_SECRET "$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 fi
