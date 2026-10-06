@@ -30,6 +30,9 @@ for d in DOSSIERS:
                        headers={"X-Nom": nom, "X-Position": str(pos)})
             assert r.get_json()["ok"], r.get_json()
     ex = c.post(f"/televersement/{tid}/terminer").get_json()
+    while ex.get("en_cours"):
+        time.sleep(0.3)
+        ex = c.get(f"/televersement/{tid}/etat").get_json()
     assert ex["ok"], ex
     assert ex["periode"]["mois"] and ex["periode"]["annee"], ex["periode"]
     f0 = ex["fichiers"][0]
@@ -110,3 +113,11 @@ assert c.get("/users").status_code == 200
 assert c.get("/compte").status_code == 200
 assert c.get("/analyse/9999").status_code == 404
 print("TOUT OK", ids)
+
+# Bloc renvoyé après une coupure (même position) : accepté, fichier non dupliqué
+tid = c.post("/televersement/nouveau").get_json()["id"]
+for pos, data in ((0, b"a;b\n"), (4, b"1;2\n"), (4, b"1;2\n"), (8, b"3;4\n")):
+    assert c.post(f"/televersement/{tid}/bloc", data=data, headers={"X-Nom": "x/f.csv", "X-Position": str(pos)}).get_json()["ok"]
+from app import televersement as T
+assert open(os.path.join(T._dossier(tid), "x", "f.csv"), "rb").read() == b"a;b\n1;2\n3;4\n"
+print("REPRISE BLOC OK")

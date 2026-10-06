@@ -20,6 +20,7 @@ services:
       SABDI_THREADS: ${SABDI_THREADS:-8}
       SABDI_DOSSIER: /depots
       TZ: ${TZ:-Africa/Douala}
+      _RJEM_MALLOC_CONF: background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0
     volumes:
       # Données persistantes : base SQLite (utilisateurs, historique), extractions,
       # fichiers téléversés, logo (logo_art.png). À sauvegarder.
@@ -27,8 +28,8 @@ services:
       # Dossiers des opérateurs déposés sur le serveur (lecture seule), accessibles
       # dans l'application par le chemin /depots/...
       - ${SABDI_DEPOTS:-./depots}:/depots:ro
-    # Une analyse de 6 millions de lignes utilise environ 3 à 4 Go de mémoire.
-    mem_limit: ${SABDI_MEMOIRE:-8g}
+    # Ordre de grandeur : 0,35 Go par million de lignes (BDI + HLR) ; 16 millions ≈ 6 Go.
+    mem_limit: ${SABDI_MEMOIRE:-13g}
     logging:
       driver: json-file
       options:

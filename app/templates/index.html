@@ -184,6 +184,31 @@ depot.addEventListener('drop', async e => {
 el('in-fichiers').addEventListener('change', e => envoyer([...e.target.files].map(f => ({fichier: f, nom: f.name}))));
 el('in-dossier').addEventListener('change', e => envoyer([...e.target.files].map(f => ({fichier: f, nom: f.webkitRelativePath || f.name}))));
 
+// Requête relancée jusqu'à 6 fois en cas de coupure réseau ou d'erreur serveur passagère
+async function reessayer(requete, essais = 6) {
+  for (let n = 1; ; n++) {
+    try {
+      const r = await requete();
+      if (r.status >= 500 && n < essais) throw new Error('HTTP ' + r.status);
+      if (r.redirected || (r.headers.get('content-type') || '').indexOf('json') < 0) {
+        throw Object.assign(new Error('Session expirée : reconnectez-vous puis renvoyez les fichiers.'), {definitif: true});
+      }
+      return r;
+    } catch (e) {
+      if (e.definitif || n >= essais) throw e;
+      el('envoi-detail').textContent = `Connexion interrompue, nouvel essai (${n}/${essais - 1})…`;
+      await new Promise(ok => setTimeout(ok, 2000 * n));
+    }
+  }
+}
+
+async function envoyerBloc(id, x, pos) {
+  const r = await reessayer(() => fetch(`/televersement/${id}/bloc`, {method: 'POST', body: x.fichier.slice(pos, pos + BLOC),
+    headers: {'X-Nom': encodeURIComponent(x.nom), 'X-Position': String(pos)}}));
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.erreur);
+}
+
 async function envoyer(liste) {
   liste = liste.filter(x => /\.(csv|txt|tsv|dat|xlsx|xls|zip)$/i.test(x.nom) && !x.nom.split('/').pop().startsWith('.'));
   if (!liste.length) { erreur('Aucun fichier CSV, TXT, Excel ou ZIP dans la sélection.'); return; }
@@ -193,14 +218,11 @@ async function envoyer(liste) {
   let envoye = 0;
   const t0 = Date.now();
   try {
-    const { id } = await (await fetch('{{ url_for("televersement_nouveau") }}', {method: 'POST'})).json();
+    const { id } = await (await reessayer(() => fetch('{{ url_for("televersement_nouveau") }}', {method: 'POST'}))).json();
     for (const [i, x] of liste.entries()) {
       el('envoi-texte').textContent = `Envoi de ${x.nom} (${i + 1}/${liste.length})`;
       for (let pos = 0; pos < x.fichier.size || pos === 0; pos += BLOC) {
-        const r = await fetch(`/televersement/${id}/bloc`, {method: 'POST', body: x.fichier.slice(pos, pos + BLOC),
-          headers: {'X-Nom': encodeURIComponent(x.nom), 'X-Position': String(pos)}});
-        const d = await r.json();
-        if (!d.ok) throw new Error(d.erreur);
+        await envoyerBloc(id, x, pos);
         envoye += Math.min(BLOC, x.fichier.size - pos);
         const pct = total ? Math.round(envoye / total * 100) : 100;
         el('envoi-barre').style.width = pct + '%';
@@ -211,8 +233,14 @@ async function envoyer(liste) {
       }
     }
     el('envoi-texte').textContent = 'Décompression et examen des fichiers…';
-    const d = await (await fetch(`/televersement/${id}/terminer`, {method: 'POST'})).json();
+    el('envoi-detail').textContent = 'Cette étape peut prendre quelques minutes pour une archive volumineuse.';
+    let d = await (await reessayer(() => fetch(`/televersement/${id}/terminer`, {method: 'POST'}))).json();
     if (!d.ok) throw new Error(d.erreur);
+    while (d.en_cours) {
+      await new Promise(ok => setTimeout(ok, 2000));
+      d = await (await reessayer(() => fetch(`/televersement/${id}/etat`))).json();
+      if (!d.ok) throw new Error(d.erreur);
+    }
     el('envoi-texte').textContent = 'Fichiers reçus et examinés.';
     EXAMEN = d; afficher(d);
   } catch (e) {

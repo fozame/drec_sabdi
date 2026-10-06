@@ -52,8 +52,12 @@ def ecrire_bloc(tid: str, nom_relatif: str, position: int, flux, taille_bloc: in
     if position == 0 and os.path.exists(chemin):
         os.remove(chemin)
     actuelle = os.path.getsize(chemin) if os.path.exists(chemin) else 0
-    if position != actuelle:
-        raise ValueError(f"Bloc hors séquence ({position} ≠ {actuelle}).")
+    if position > actuelle:
+        raise ValueError(f"Bloc hors séquence ({position} > {actuelle}).")
+    if position < actuelle:
+        # bloc renvoyé après une coupure : on reprend à sa position
+        with open(chemin, "r+b") as f:
+            f.truncate(position)
     with open(chemin, "ab") as f:
         while True:
             morceau = flux.read(taille_bloc)
@@ -115,3 +119,33 @@ def purger():
                 shutil.rmtree(d, ignore_errors=True)
         except OSError:
             pass
+
+
+# ── Finalisation en arrière-plan (décompression et examen peuvent durer) ─────
+import threading as _threading
+
+_finalisations: dict[str, dict] = {}
+
+
+def finaliser_en_arriere_plan(tid: str, examiner) -> None:
+    """Lance décompression + examen sans bloquer la requête du navigateur."""
+    _dossier(tid)                                   # contrôle de l'identifiant
+    if _finalisations.get(tid, {}).get("etat") == "en_cours":
+        return
+    _finalisations[tid] = {"etat": "en_cours", "debut": time.time()}
+
+    def tache():
+        try:
+            dossier = finaliser(tid)
+            res = examiner(dossier)
+            res["televersement"] = tid
+            _finalisations[tid] = {"etat": "termine", "resultat": res}
+        except Exception as e:                      # noqa: BLE001
+            _finalisations[tid] = {"etat": "erreur",
+                                   "erreur": f"Traitement des fichiers reçus impossible : {e}"}
+
+    _threading.Thread(target=tache, daemon=True).start()
+
+
+def etat_finalisation(tid: str) -> dict:
+    return _finalisations.get(tid, {"etat": "inconnu"})

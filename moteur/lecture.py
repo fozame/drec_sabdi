@@ -8,6 +8,7 @@ statuts et des types de pièce.
 from __future__ import annotations
 
 import os
+import re
 
 import polars as pl
 
@@ -61,16 +62,8 @@ def _transcoder(chemin: str, encodage: str) -> str:
     return cible
 
 
-def scanner(fd: FichierDetecte) -> tuple[pl.LazyFrame, str | None]:
-    """Retourne (LazyFrame tout en texte, fichier temporaire éventuel à supprimer après lecture)."""
-    ext = os.path.splitext(fd.chemin)[1].lower()
-    if ext in (".xlsx", ".xls"):
-        df = _lire_excel(fd.chemin)
-        if fd.saut:
-            entete = [str(v) for v in df.row(fd.saut - 1)]
-            df = df.slice(fd.saut).rename({a: b for a, b in zip(df.columns, entete) if b})
-        return df.select([pl.col(c).cast(pl.String) for c in df.columns]).lazy(), None
-
+def _preparer_csv(fd: FichierDetecte) -> tuple[str, str | None, dict, bool]:
+    """Chemin à lire (copie UTF-8 éventuelle), fichier temporaire, options de lecture, guillemets."""
     chemin, temporaire = fd.chemin, None
     enc = detecter_encodage(fd.chemin)
     if enc != "utf-8":
@@ -79,13 +72,126 @@ def scanner(fd: FichierDetecte) -> tuple[pl.LazyFrame, str | None]:
     if not sep:
         with open(chemin, "rb") as f:
             sep = detecter_separateur(f.read(65536).decode("utf-8", "replace").splitlines()[:6])
+    guillemets = guillemets_utilises(chemin, sep)
     options = dict(separator=sep, infer_schema_length=0, encoding="utf8-lossy", ignore_errors=True,
-                   truncate_ragged_lines=True, quote_char='"', low_memory=False)
+                   truncate_ragged_lines=True, quote_char='"' if guillemets else None)
     if fd.sans_entete:
-        options.update(has_header=False, new_columns=list(fd.colonnes))
+        options.update(has_header=False, new_columns=_noms_uniques(fd.colonnes))
+    elif not guillemets:
+        # Sans gestion des guillemets, l'en-tête est lu par la détection (guillemets retirés)
+        options.update(has_header=False, skip_rows=fd.saut + 1, new_columns=_noms_uniques(fd.colonnes))
     elif fd.saut:
         options.update(skip_rows=fd.saut)
-    return pl.scan_csv(chemin, **options), temporaire
+    return chemin, temporaire, options, guillemets
+
+
+def _excel(fd: FichierDetecte) -> pl.DataFrame:
+    df = _lire_excel(fd.chemin)
+    if fd.saut:
+        entete = [str(v) for v in df.row(fd.saut - 1)]
+        df = df.slice(fd.saut).rename({a: b for a, b in zip(df.columns, entete) if b})
+    return df.select([pl.col(c).cast(pl.String) for c in df.columns])
+
+
+def scanner(fd: FichierDetecte) -> tuple[pl.LazyFrame, str | None]:
+    """
+    Retourne (LazyFrame tout en texte, fichier temporaire éventuel à supprimer après lecture).
+    Réservé aux lectures partielles (en-tête, échantillon) : pour un fichier entier,
+    utiliser lots(), dont la mémoire ne dépend pas de la taille du fichier.
+    """
+    if os.path.splitext(fd.chemin)[1].lower() in (".xlsx", ".xls"):
+        return _excel(fd).lazy(), None
+    chemin, temporaire, options, guillemets = _preparer_csv(fd)
+    lf = pl.scan_csv(chemin, low_memory=False, **options)
+    if not guillemets:
+        lf = lf.with_columns(pl.all().str.strip_chars('"'))
+    return lf, temporaire
+
+
+def lots(fd: FichierDetecte, colonnes: list[str] | None = None, taille: int | None = None):
+    """
+    Lit un fichier entier par lots de `taille` lignes (DataFrames tout en texte).
+    La mémoire utilisée dépend de la taille d'un lot, pas de celle du fichier :
+    un fichier de plusieurs gigaoctets se lit avec quelques centaines de Mo.
+    """
+    taille = taille or LIGNES_PAR_LOT
+    if os.path.splitext(fd.chemin)[1].lower() in (".xlsx", ".xls"):
+        df = _excel(fd)
+        yield df.select([c for c in colonnes if c in df.columns]) if colonnes else df
+        return
+    chemin, temporaire, options, guillemets = _preparer_csv(fd)
+    try:
+        lecteur = None
+        if hasattr(pl, "read_csv_batched"):
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    lecteur = pl.read_csv_batched(chemin, batch_size=taille, **options)
+                except pl.exceptions.NoDataError:
+                    return
+        if lecteur is None:                          # version de Polars sans lecteur par lots
+            lf = pl.scan_csv(chemin, low_memory=False, **options)
+            if colonnes:
+                lf = lf.select([c for c in colonnes if c in lf.collect_schema().names()])
+            sources = iter([_collecter(lf)])
+        else:
+            def _suite():
+                while True:
+                    try:
+                        b = lecteur.next_batches(1)
+                    except pl.exceptions.NoDataError:
+                        b = None
+                    if not b:
+                        return
+                    yield from b
+            sources = _suite()
+        for x in sources:
+            if colonnes:
+                x = x.select([c for c in colonnes if c in x.columns])
+            if not guillemets and x.width:
+                x = x.with_columns(pl.all().cast(pl.String).str.strip_chars('"'))
+            yield x
+    finally:
+        if temporaire:
+            try:
+                os.remove(temporaire)
+            except OSError:
+                pass
+
+
+def _noms_uniques(colonnes) -> list[str]:
+    vus, sortie = {}, []
+    for c in colonnes:
+        c = str(c)
+        if c in vus:
+            vus[c] += 1
+            c = f"{c}_{vus[c]}"
+        vus.setdefault(c, 0)
+        sortie.append(c)
+    return sortie
+
+
+def guillemets_utilises(chemin: str, sep: str) -> bool:
+    """
+    Les valeurs du fichier sont-elles encadrées de guillemets ("…") ?
+    Les extractions des opérateurs n'en utilisent généralement pas ; un guillemet
+    isolé dans un nom (ex. « MBARGA "JUNIOR ») ferait alors fusionner des millions
+    de lignes en une seule. On n'active la gestion des guillemets que si la
+    majorité des lignes de l'échantillon en contient en début de valeur.
+    """
+    try:
+        with open(chemin, "rb") as f:
+            lignes = f.read(1 << 20).decode("utf-8", "replace").splitlines()[1:3000]
+    except OSError:
+        return True
+    lignes = [l for l in lignes if l.strip()]
+    if not lignes:
+        return False
+    # guillemet ouvrant une valeur non vide (les "" des champs vides ne comptent pas)
+    motif = re.compile(r'(^|' + re.escape(sep) + r')"[^"]')
+    avec = sum(1 for l in lignes if motif.search(l))
+    return avec >= 0.5 * len(lignes)
 
 
 def noms_colonnes(lf: pl.LazyFrame) -> list[str]:
@@ -120,6 +226,10 @@ def statut_hlr(statut, entrant, sortant, a_statut: bool, a_odb: bool) -> str:
     if bi:
         return "SUSP_RECEPTION"
     return base
+
+
+LIGNES_PAR_LOT = 100_000
+_NUL, _SEP = "\x00", "\x1f"
 
 
 def _collecter(lf: pl.LazyFrame) -> pl.DataFrame:
@@ -171,17 +281,17 @@ def charger(fd: FichierDetecte, log=print, champs: set | None = None) -> tuple[p
     """
     lf, temporaire = scanner(fd)
     try:
-        return _charger(fd, lf, log, champs)
+        reels = noms_colonnes(lf)
     finally:
         if temporaire:
             try:
                 os.remove(temporaire)
             except OSError:
                 pass
+    return _charger(fd, reels, log, champs)
 
 
-def _charger(fd, lf, log, champs):
-    reels = noms_colonnes(lf)
+def _charger(fd, reels, log, champs):
     corresp = correspondances_effectives(fd, reels)
     fd.correspondances = corresp
     fd.champs_manquants = [c for c in R.CHAMPS_PAR_ROLE.get(fd.role, []) if c not in corresp
@@ -197,8 +307,13 @@ def _charger(fd, lf, log, champs):
     cols_statut = [c for c in ("statut", "odb_entrant", "odb_sortant") if c in utiles]
     if cols_statut:
         a_statut, a_odb = "statut" in utiles, ("odb_entrant" in utiles or "odb_sortant" in utiles)
-        vc = _collecter(lf.group_by([pl.col(utiles[c]).cast(pl.String).str.strip_chars().alias(f"_{c}")
-                                     for c in cols_statut]).agg(pl.len().alias("n")))
+        cles = [f"_{c}" for c in cols_statut]
+        parts = [x.select([pl.col(utiles[c]).cast(pl.String).str.strip_chars().alias(f"_{c}") for c in cols_statut])
+                 .group_by(cles).agg(pl.len().alias("n"))
+                 for x in lots(fd, colonnes=[utiles[c] for c in cols_statut])]
+        vc = (pl.concat(parts).group_by(cles).agg(pl.col("n").sum()) if parts else
+              pl.DataFrame({**{k: [] for k in cles}, "n": []},
+                           schema={**{k: pl.String for k in cles}, "n": pl.UInt32}))
         combos = vc.to_dicts()
         cats = [statut_hlr(d.get("_statut"), d.get("_odb_entrant"), d.get("_odb_sortant"), a_statut, a_odb)
                 for d in combos]
@@ -222,8 +337,9 @@ def _charger(fd, lf, log, champs):
         statuts_bruts.sort(key=lambda d: -d["n"])
     for champ in CHAMPS_TYPE:
         if champ in utiles:
-            vc = _collecter(lf.select(pl.col(utiles[champ]).cast(pl.String).str.strip_chars().alias("v")).unique())
-            valeurs = vc["v"].to_list()
+            parts = [x.select(pl.col(utiles[champ]).cast(pl.String).str.strip_chars().alias("v")).unique()
+                     for x in lots(fd, colonnes=[utiles[champ]])]
+            valeurs = pl.concat(parts).unique()["v"].to_list() if parts else []
             normes = [normaliser_type_piece(v) for v in valeurs]
             tables[champ] = pl.DataFrame({f"_{champ}": valeurs, champ: normes},
                                          schema={f"_{champ}": pl.String, champ: pl.String})
@@ -265,17 +381,47 @@ def _charger(fd, lf, log, champs):
             ]
         else:
             exprs.append(expr_vide(reel).alias(f"{champ}_vide"))
+    def transformer(q):
+        return _transformer(q, exprs, tables)
+
+    morceaux = [transformer(x.lazy()).collect() for x in lots(fd, colonnes=list(dict.fromkeys(utiles.values())))]
+    df = pl.concat(morceaux, how="vertical", rechunk=True) if morceaux else transformer(
+        pl.DataFrame({c: [] for c in dict.fromkeys(utiles.values())},
+                     schema={c: pl.String for c in dict.fromkeys(utiles.values())}).lazy()).collect()
+    del morceaux
+    return _finaliser(df, fd, corresp, vide_info, statuts_bruts, variantes, log)
+
+
+def _transformer(lf, exprs, tables):
     q = lf.select(exprs)
+    # Correspondances valeur brute → catégorie appliquées ligne à ligne (et non par
+    # jointure, qui obligerait à charger tout le fichier en mémoire avant de l'écrire).
     for champ, table in tables.items():
         cles = [c for c in table.columns if c.startswith("_")]
-        q = q.join(table.lazy(), on=cles, how="left", **_join_nulls())
+        cibles = [c for c in table.columns if not c.startswith("_")]
+        cle_expr = pl.concat_str([pl.col(c).fill_null(_NUL) for c in cles], separator=_SEP)
+        cles_tab = ["\x1f".join(_NUL if v is None else v for v in ligne)
+                    for ligne in table.select(cles).iter_rows()]
+        ajouts = []
+        for cible in cibles:
+            dtype = table.schema[cible]
+            valeurs = table[cible].to_list()
+            if isinstance(dtype, pl.Enum):
+                ajouts.append(cle_expr.replace_strict(cles_tab, [None if v is None else str(v) for v in valeurs],
+                                                      default=None, return_dtype=pl.String).cast(dtype).alias(cible))
+            else:
+                ajouts.append(cle_expr.replace_strict(cles_tab, valeurs, default=None, return_dtype=dtype)
+                              .alias(cible))
+        q = q.with_columns(ajouts)
     q = q.with_columns(
         pl.col("_m").cast(pl.Int64, strict=False).alias("msisdn"),
         (pl.col("_m").is_null() | (pl.col("_m").str.len_chars() != 9)).alias("msisdn_nc"),
     )
     noms_q = q.collect_schema().names()
-    q = q.drop([c for c in noms_q if c.startswith("_")])
-    df = _collecter(q)
+    return q.drop([c for c in noms_q if c.startswith("_")])
+
+
+def _finaliser(df, fd, corresp, vide_info, statuts_bruts, variantes, log):
     for champ in CHAMPS_TYPE:
         if champ in df.columns:
             df = df.with_columns(pl.col(champ).fill_null("NON_RENSEIGNE"))

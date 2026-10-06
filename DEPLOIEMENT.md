@@ -4,7 +4,8 @@
 
 - Linux 64 bits avec Docker Engine et le module Compose (`docker compose version`).
 - Git, et un accès sortant à github.com (SSH port 22 ou HTTPS 443) pour le déploiement depuis GitHub.
-- 8 Go de mémoire vive conseillés (une analyse de 6 millions de lignes utilise 3 à 4 Go).
+- 16 Go de mémoire vive conseillés : une analyse utilise environ 0,35 Go par million de lignes
+  (BDI de 16 millions de lignes ≈ 6 Go). Le conteneur est limité à 13 Go (`SABDI_MEMOIRE`).
 - Espace disque : environ 1 Go pour l'image, plus les données (historique, extractions,
   fichiers téléversés conservés 3 jours).
 - Pour la construction de l'image : accès à Docker Hub (image `python:3.11-slim-bookworm`)
@@ -171,7 +172,7 @@ Deux façons de fournir les fichiers :
 | `SABDI_ADMIN_PASSWORD` | mot de passe du compte `admin` au premier démarrage | `admin123` |
 | `SABDI_DONNEES` | dossier des données sur le serveur | `./donnees` |
 | `SABDI_DEPOTS` | dossier des fichiers déposés sur le serveur | `./depots` |
-| `SABDI_MEMOIRE` | mémoire maximale du conteneur | `8g` |
+| `SABDI_MEMOIRE` | mémoire maximale du conteneur | `13g` |
 | `SABDI_THREADS` | fils d'exécution du serveur web | `8` |
 | `SABDI_POLARS_RUNTIME` | `rtcompat` pour un processeur ancien (voir plus bas) | vide |
 | `TZ` | fuseau horaire | `Africa/Douala` |
@@ -211,7 +212,8 @@ sudo -E ./scripts/mettre_a_jour.sh
 | Redémarrer | `sudo docker compose restart sabdi` |
 | Arrêter | `sudo docker compose down` (les données sont conservées) |
 | « Illegal instruction » au démarrage | processeur sans jeu d'instructions récent : mettre `SABDI_POLARS_RUNTIME=rtcompat` dans `.env` puis `sudo ./scripts/mettre_a_jour.sh` |
-| Analyse interrompue (mémoire) | augmenter `SABDI_MEMOIRE` puis `sudo docker compose up -d` |
+| Analyse interrompue, application redémarrée (mémoire) | `sudo dmesg \| grep -i "out of memory"` le confirme ; augmenter `SABDI_MEMOIRE` dans `.env` (sans dépasser la mémoire du serveur moins 2 Go) puis `sudo docker compose up -d` |
+| « L'envoi a échoué » | l'envoi reprend seul après une coupure (6 essais par bloc) ; si l'échec persiste, vérifier l'espace disque (`df -h`) et que l'application tourne (`sudo docker compose ps`) |
 | Mot de passe admin perdu | `sudo docker exec -it sabdi python -c "import sqlite3, config; from werkzeug.security import generate_password_hash as h; c=sqlite3.connect(config.CHEMIN_BD); c.execute('UPDATE users SET password=? WHERE username=?', (h('NouveauMotDePasse'), 'admin')); c.commit()"` |
 | Logo absent | déposer `logo_art.png` dans `donnees/` (pris en compte sans redémarrage) |
 

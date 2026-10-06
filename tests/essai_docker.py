@@ -52,6 +52,9 @@ for pos in range(0, len(data), BLOC):
                headers={"X-Nom": os.path.basename(DOSSIER) + ".zip", "X-Position": str(pos)}).json()
     assert r["ok"], r
 ex = s.post(f"{URL}/televersement/{tid}/terminer").json()
+while ex.get("en_cours"):
+    time.sleep(1)
+    ex = s.get(f"{URL}/televersement/{tid}/etat").json()
 assert ex["ok"], ex
 a1 = lancer(ex, tid)
 print("téléversement zip : analyse", a1, ex["operateur_libelle"], ex["periode"])

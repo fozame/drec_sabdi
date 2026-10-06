@@ -60,7 +60,7 @@ SABDI_ADMIN_PASSWORD=admin123
 SABDI_PORT_HOTE=5600
 SABDI_DONNEES=./donnees
 SABDI_DEPOTS=./depots
-SABDI_MEMOIRE=8g
+SABDI_MEMOIRE=13g
 SABDI_THREADS=8
 SABDI_POLARS_RUNTIME=
 TZ=Africa/Douala
@@ -68,4 +68,13 @@ FIN
   fi
   ecrire_env SABDI_SECRET "$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   info "Fichier .env créé (clé secrète générée)."
+}
+
+# Anciennes valeurs par défaut remplacées lors d'une mise à jour
+migrer_env() {
+  [ -f .env ] || return 0
+  if [ "$(lire_env SABDI_MEMOIRE)" = "8g" ]; then
+    ecrire_env SABDI_MEMOIRE 13g
+    info "Mémoire maximale portée de 8 à 13 Go (SABDI_MEMOIRE dans .env)."
+  fi
 }

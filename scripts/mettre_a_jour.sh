@@ -11,6 +11,8 @@ info "Version en service : ${ANCIENNE:-inconnue} → nouvelle version : $VERSION
 # 1. Sauvegarde préalable des données
 ./scripts/sauvegarder.sh
 
+migrer_env
+
 # 2. Construction de la nouvelle image (l'ancienne reste disponible pour un retour arrière)
 ecrire_env SABDI_VERSION "$VERSION_CODE"
 if ! $DC build; then

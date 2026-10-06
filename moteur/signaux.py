@@ -97,8 +97,13 @@ class Signaux:
         return [("Non renseigné" if t == "NON_RENSEIGNE" else t, int(v))
                 for t, v in zip(g["type_piece"].to_list(), g["n"].to_list())]
 
-    def _pieces_valides(self) -> pl.DataFrame:
-        return self.P.filter(~pl.col("numero_piece_vide") & (pl.col("piece_id").str.len_chars() >= 4))
+    def _cols(self, *noms) -> pl.DataFrame:
+        """Sous-ensemble de colonnes (évite de copier toutes les colonnes à chaque filtre)."""
+        return self.P.select([c for c in dict.fromkeys(("msisdn",) + noms) if c in self.P.columns])
+
+    def _pieces_valides(self, *cols) -> pl.DataFrame:
+        return (self._cols("piece_id", "numero_piece_vide", *cols)
+                .filter(~pl.col("numero_piece_vide") & (pl.col("piece_id").str.len_chars() >= 4)))
 
     # ─────────────────────────────────────────────────────────────────────────
     def calculer(self) -> tuple[list[dict], dict]:
@@ -183,7 +188,7 @@ class Signaux:
     def _pieces(self, base):
         if not self.a_piece:
             return
-        V = self._pieces_valides()
+        V = self._pieces_valides("nom_cle", "date_naissance")
         if self.a_nom:
             aggs = [pl.len().alias("lignes"), pl.col("nom_cle").n_unique().alias("noms")]
             if self.a_naiss:
@@ -223,8 +228,9 @@ class Signaux:
     def _identites(self, base):
         if not (self.a_nom and self.a_naiss):
             return
-        I = self.P.filter(pl.col("nom_cle").is_not_null() & pl.col("date_naissance").is_not_null()
-                          & ~pl.col("nom_generique"))
+        I = (self._cols("nom_cle", "date_naissance", "nom_generique", "numero_piece_vide", "piece_id")
+             .filter(pl.col("nom_cle").is_not_null() & pl.col("date_naissance").is_not_null()
+                     & ~pl.col("nom_generique")))
         if self.a_piece:
             V = I.filter(~pl.col("numero_piece_vide") & (pl.col("piece_id").str.len_chars() >= 4))
             g = (V.group_by(["nom_cle", "date_naissance"])
@@ -267,7 +273,7 @@ class Signaux:
     def _series(self, base):
         if not self.a_piece:
             return
-        V = self._pieces_valides().filter(pl.col("piece_id").str.contains(r"^\d{6,12}$"))
+        V = self._pieces_valides("date_activation").filter(pl.col("piece_id").str.contains(r"^\d{6,12}$"))
         if V.height == 0:
             return
         ids = (V.select(pl.col("piece_id").cast(pl.Int64).alias("v")).unique().sort("v")
@@ -297,12 +303,12 @@ class Signaux:
     def _formes(self, base):
         if not self.a_piece:
             return
-        V = self.P.filter(~pl.col("numero_piece_vide") & pl.col("piece_id").is_not_null()
-                          & (pl.col("piece_id") != ""))
+        V = (self._cols("piece_id", "numero_piece_vide")
+             .filter(~pl.col("numero_piece_vide") & pl.col("piece_id").is_not_null() & (pl.col("piece_id") != "")))
         p = pl.col("piece_id")
         regles = [
             ("Un seul chiffre ou caractère répété (111111111…)",
-             (p.str.len_chars() >= 4) & (p.str.split("").list.unique().list.len() == 1)),
+             (p.str.len_chars() >= 4) & (p.str.strip_chars(p.str.slice(0, 1)).str.len_chars() == 0)),
             ("Suite croissante ou décroissante (123456789…)", p.is_in(_suites_triviales())),
             ("Trop court (moins de 6 caractères)", p.str.len_chars() < 6),
             ("Identique au numéro de téléphone", p.str.contains(r"^\d+$") &

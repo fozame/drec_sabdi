@@ -264,6 +264,11 @@ python tests/essai_application.py /tmp/donnees_test/OCM_FEVRIER_2026 /tmp/donnee
 
 ## Performances
 
-Mesuré avec les signaux et extractions : 6 millions de lignes BDI + 6 millions
-de lignes HLR en 80 secondes environ et 3,2 Go de mémoire. Pour une base de
-12 millions de numéros, compter 3 minutes environ et 6 Go de mémoire.
+Les fichiers sont lus par lots de 100 000 lignes : la mémoire dépend du nombre
+de lignes, pas de la taille des fichiers. Ordre de grandeur mesuré (BDI, fichiers
+majeurs et mineurs, HLR, avec signaux) : 0,35 Go par million de lignes, soit
+environ 6 Go pour une base de 16 millions de numéros, et 20 secondes par million
+de lignes sur un serveur à 2 cœurs.
+
+Les valeurs ne sont encadrées de guillemets que si le fichier les utilise
+systématiquement : un guillemet isolé dans un nom ne fusionne plus de lignes.

@@ -10,10 +10,14 @@ processus (pas de gunicorn -w 4).
 import logging
 import os
 
-from waitress import serve
+# Restitution rapide au système de la mémoire libérée par le moteur de calcul
+# (doit être défini avant le premier chargement de Polars).
+os.environ.setdefault("_RJEM_MALLOC_CONF", "background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0")
 
-import config
-from app import app
+from waitress import serve  # noqa: E402
+
+import config  # noqa: E402
+from app import app  # noqa: E402
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

@@ -611,7 +611,7 @@ def categorie_type_defaut(t: str) -> str:
 
 def estimer_periode_donnees(fichiers: list[FichierDetecte]) -> dict | None:
     """Mois de la date de souscription la plus récente (hors dates futures) dans la BDI."""
-    from .lecture import scanner
+    from .lecture import lots
     from .normalisation import expr_date
     import polars as pl
     aujourd_hui = date.today()
@@ -620,13 +620,12 @@ def estimer_periode_donnees(fichiers: list[FichierDetecte]) -> dict | None:
         if fd.role not in ("BDI", "MAJEURS", "MINEURS", "FLOTTE", "M2M") or "date_activation" not in fd.correspondances:
             continue
         try:
-            lf, tmp = scanner(fd)
-            d = lf.select(expr_date(fd.correspondances["date_activation"]).alias("d")) \
-                .filter(pl.col("d") <= pl.lit(aujourd_hui)).select(pl.col("d").max()).collect().item()
-            if tmp:
-                os.remove(tmp)
-            if d and (meilleur is None or d > meilleur):
-                meilleur = d
+            col = fd.correspondances["date_activation"]
+            for x in lots(fd, colonnes=[col]):
+                d = x.lazy().select(expr_date(col).alias("d")).filter(pl.col("d") <= pl.lit(aujourd_hui)) \
+                    .select(pl.col("d").max()).collect().item()
+                if d and (meilleur is None or d > meilleur):
+                    meilleur = d
         except Exception:
             continue
     if not meilleur:

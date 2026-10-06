@@ -185,14 +185,36 @@ def televersement_bloc(tid):
 @app.route("/televersement/<tid>/terminer", methods=["POST"])
 @role_requis("admin0", "admin1")
 def televersement_terminer(tid):
+    """
+    Décompression et examen des fichiers reçus. Par défaut en arrière-plan : le
+    navigateur interroge ensuite /etat (une archive de plusieurs Go peut demander
+    plusieurs minutes, au-delà du délai d'attente d'un navigateur ou d'un proxy).
+    """
     from app import televersement as T
     try:
-        dossier = T.finaliser(tid)
-        res = examiner_dossier(dossier)
-        res["televersement"] = tid
-        return jsonify(res)
+        if request.args.get("attendre"):
+            dossier = T.finaliser(tid)
+            res = examiner_dossier(dossier)
+            res["televersement"] = tid
+            return jsonify(res)
+        T.finaliser_en_arriere_plan(tid, examiner_dossier)
+        return jsonify({"ok": True, "en_cours": True})
     except Exception as e:
         return jsonify({"ok": False, "erreur": f"Traitement des fichiers reçus impossible : {e}"})
+
+
+@app.route("/televersement/<tid>/etat")
+@role_requis("admin0", "admin1")
+def televersement_etat(tid):
+    from app import televersement as T
+    e = T.etat_finalisation(tid)
+    if e["etat"] == "termine":
+        return jsonify(e["resultat"])
+    if e["etat"] == "erreur":
+        return jsonify({"ok": False, "erreur": e["erreur"]})
+    if e["etat"] == "inconnu":
+        return jsonify({"ok": False, "erreur": "Envoi inconnu (application redémarrée ?) : renvoyer les fichiers."})
+    return jsonify({"ok": True, "en_cours": True})
 
 
 @app.route("/lancer", methods=["POST"])

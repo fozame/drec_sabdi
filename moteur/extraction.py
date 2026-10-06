@@ -16,7 +16,7 @@ import polars as pl
 
 from . import referentiel as R
 from .detection import FichierDetecte
-from .lecture import scanner, noms_colonnes, _collecter
+from .lecture import scanner, noms_colonnes, lots
 from .normalisation import expr_msisdn
 
 
@@ -44,17 +44,23 @@ def extraire(fichiers: list[FichierDetecte], marques: dict[str, dict], dossier: 
         try:
             lf, tmp = scanner(fd)
             cols = noms_colonnes(lf)
+            if tmp:
+                os.remove(tmp)
             col_m = fd.correspondances["msisdn"]
             if col_m not in cols:
                 continue
             d = drapeaux.filter(pl.col("_indicateur").is_in(codes))
-            res = _collecter(
-                lf.with_columns(expr_msisdn(col_m).cast(pl.Int64, strict=False).alias("_m"))
-                  .join(d.lazy(), left_on="_m", right_on="msisdn", how="inner")
-                  .with_columns(pl.lit(fd.nom).alias("fichier_source"))
-                  .drop("_m"))
-            if tmp:
-                os.remove(tmp)
+            # lecture par lots : seules les lignes concernées sont gardées en mémoire
+            morceaux = []
+            for x in lots(fd):
+                morceaux.append(
+                    x.lazy().with_columns(expr_msisdn(col_m).cast(pl.Int64, strict=False).alias("_m"))
+                     .join(d.lazy(), left_on="_m", right_on="msisdn", how="inner")
+                     .with_columns(pl.lit(fd.nom).alias("fichier_source"))
+                     .drop("_m").collect())
+            if not morceaux:
+                continue
+            res = pl.concat(morceaux, how="vertical")
         except Exception as e:
             log(f"Extraction impossible pour {fd.nom} : {e}")
             continue
