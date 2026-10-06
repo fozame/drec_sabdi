@@ -47,6 +47,11 @@ LIBELLE_SEGMENT = {"MAJEURS": "personnes physiques majeures", "MINEURS": "person
 # OUTILS
 # ═════════════════════════════════════════════════════════════════════════════
 
+COLONNES_SIGNAUX = ("msisdn", "date_naissance", "date_activation", "date_expiration", "date_naissance_tuteur",
+                    "date_expiration_tuteur", "piece_id", "numero_piece_vide", "nom_cle", "nom_generique",
+                    "nom_un_mot", "nom_chiffres", "type_piece", "type_piece_tuteur")
+
+
 def _concat(dfs: list[pl.DataFrame]) -> pl.DataFrame:
     dfs = [d for d in dfs if d is not None and d.width > 0]
     if not dfs:
@@ -159,8 +164,14 @@ class Analyse:
         controles = self._controles()
         self.etape("Complétude des champs", 88)
         completude = self._completude()
-        self.etape("Signaux d'alerte", 90)
-        self._signaux()
+        if self.p.get("signaux", True):
+            self.etape("Signaux d'alerte", 90)
+            self._signaux()
+        else:
+            self.signaux = self._signaux_statuts()
+            for code, df in self._marques_statuts.items():
+                self.marques[f"sig_{code}"] = {"libelle": code, "msisdn": df, "roles": self._roles_statuts[code]}
+            self.alertes.append(self.p.get("motif_sans_signaux") or "Signaux d'alerte non calculés.")
         self.etape("Synthèse", 94)
         synthese = self._synthese(etat, controles)
         for e in etat:
@@ -565,7 +576,8 @@ class Analyse:
     def _plus_de_n_modules(self, df: pl.DataFrame):
         if _vide(df) or "piece_id" not in df.columns:
             return None
-        base = df.filter(~pl.col("numero_piece_vide") & (pl.col("piece_id").str.len_chars() >= 4))
+        base = (df.select([c for c in ("msisdn", "piece_id", "numero_piece_vide", "statut") if c in df.columns])
+                .filter(~pl.col("numero_piece_vide") & (pl.col("piece_id").str.len_chars() >= 4)))
         ids = (base.group_by("piece_id").agg(pl.len().alias("nb"))
                .filter(pl.col("nb") > R.MAX_MODULES))
         lignes = base.join(ids.select("piece_id"), on="piece_id", how="semi")
@@ -1031,17 +1043,23 @@ class Analyse:
     def _signaux(self):
         self._marques_statuts, self._roles_statuts = {}, {}
         parts = []
+
+        def utiles(df):
+            # seules les colonnes exploitées par les signaux (mémoire)
+            return df.select([c for c in COLONNES_SIGNAUX if c in df.columns])
+
         if self.mode_physiques == "bdi" and "_PHYSIQUES" in self.seg_tous:
             b = self.seg_tous["_PHYSIQUES"]
             if self.perimetre == "hlr" and "dans_hlr" in b.columns:
                 b = b.filter(pl.col("dans_hlr"))
-            parts.append(b.with_columns(pl.lit("BDI").alias("source")))
+            parts.append(utiles(b).with_columns(pl.lit("BDI").alias("source")))
         else:
             for seg in ("MAJEURS", "MINEURS"):
                 if seg in self.seg:
-                    parts.append(self.seg[seg].with_columns(
+                    parts.append(utiles(self.seg[seg]).with_columns(
                         pl.lit("MINEURS_DECLARES" if seg == "MINEURS" else seg).alias("source")))
         P = _concat(parts)
+        del parts
         if _vide(P):
             self.signaux = self._signaux_statuts()
             for code, df in self._marques_statuts.items():

@@ -270,5 +270,11 @@ majeurs et mineurs, HLR, avec signaux) : 0,35 Go par million de lignes, soit
 environ 6 Go pour une base de 16 millions de numéros, et 20 secondes par million
 de lignes sur un serveur à 2 cœurs.
 
+Chaque analyse s'exécute dans un processus séparé. Si la mémoire manque, seul ce
+processus est arrêté : l'application reste en service, l'analyse est relancée
+automatiquement sans les signaux d'alerte (puis sans les extractions) et le
+motif figure dans les alertes. Le journal de suivi indique la mémoire utilisée
+à chaque étape.
+
 Les valeurs ne sont encadrées de guillemets que si le fichier les utilise
 systématiquement : un guillemet isolé dans un nom ne fusionne plus de lignes.

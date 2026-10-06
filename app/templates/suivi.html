@@ -32,8 +32,10 @@ async function interroger() {
   depuis = d.total_logs || depuis;
   j.scrollTop = j.scrollHeight;
   document.getElementById('etape').textContent = d.etape || '';
-  document.getElementById('pct').textContent = (d.pct || 0) + ' %';
-  document.getElementById('barre').style.width = (d.pct || 0) + '%';
+  if (d.etat !== 'inconnu') {
+    document.getElementById('pct').textContent = (d.pct || 0) + ' %';
+    document.getElementById('barre').style.width = (d.pct || 0) + '%';
+  }
   const fin = document.getElementById('fin');
   if (d.etat === 'termine') {
     fin.innerHTML = `<a class="btn btn-principal" href="${d.url}">Voir les résultats</a>`;
@@ -44,7 +46,10 @@ async function interroger() {
     fin.innerHTML = `<div class="flash danger" style="margin:0;flex:1">${esc(d.erreur)}</div><a class="btn" href="{{ url_for('index') }}">Retour</a>`;
     fin.style.display = 'flex';
   } else if (d.etat === 'inconnu') {
-    fin.innerHTML = `<a class="btn" href="{{ url_for('historique') }}">Consulter l'historique</a>`; fin.style.display = 'flex';
+    document.getElementById('etape').textContent = 'Suivi interrompu';
+    document.getElementById('pct').textContent = '';
+    fin.innerHTML = `<div class="flash warning" style="margin:0;flex:1">L'application a redémarré pendant l'analyse : elle n'a pas été enregistrée. Relancez-la ; si cela se reproduit, signalez-le à l'administrateur (journal : docker compose logs).</div><a class="btn" href="{{ url_for('index') }}">Nouvelle analyse</a>`;
+    fin.style.display = 'flex';
   } else setTimeout(interroger, 900);
 }
 interroger();
